@@ -49,10 +49,9 @@ main.container{max-width:48rem}
   <dl class="kv">
     <dt>Outside</dt><dd><span id="stState" class="badge b-unknown">unknown</span></dd>
     <dt>LED stream</dt><dd><span id="stGate" class="badge b-unknown">-</span> <small id="stReason" class="muted"></small></dd>
-    <dt>Device clock</dt><dd><span id="stTime">-</span> <small id="stSync" class="muted"></small></dd>
     <dt>Next sunrise</dt><dd id="stRise">-</dd>
     <dt>Next sunset</dt><dd id="stSet">-</dd>
-    <dt>Next change</dt><dd id="stChange">-</dd>
+    <dt id="stChangeLabel" hidden>Next change</dt><dd id="stChange" hidden>-</dd>
   </dl>
   <footer>
     <div role="group">
@@ -61,15 +60,6 @@ main.container{max-width:48rem}
       <button id="ovBlock" class="outline" onclick="setOverride('block')">Always block</button>
     </div>
     <small class="muted">Override is stored on the device and survives a reboot.</small>
-    <hr>
-    <div class="grid">
-      <small class="muted">Show times in</small>
-      <div role="group">
-        <button id="tzLocal" class="outline" onclick="setTimeZone('local')">This browser</button>
-        <button id="tzUtc" class="outline" onclick="setTimeZone('utc')">UTC</button>
-      </div>
-    </div>
-    <small id="tzNote" class="muted"></small>
   </footer>
 </article>
 
@@ -113,11 +103,12 @@ main.container{max-width:48rem}
     </select>
   </label>
   <div class="grid">
-    <label>Evening: allow LEDs <span class="muted">(minutes after "dark" begins; negative = earlier)</span>
+    <label>Evening: switch on later by
       <input id="setOffset" type="number" step="1" min="-360" max="360" value="0" oninput="preview()"></label>
-    <label>Morning: block LEDs <span class="muted">(minutes after "dark" ends; negative = earlier)</span>
+    <label>Morning: switch off later by
       <input id="riseOffset" type="number" step="1" min="-360" max="360" value="0" oninput="preview()"></label>
   </div>
+  <small class="muted">Minutes. Negative values shift the other way.</small>
   <details>
     <summary>Advanced</summary>
     <label>NTP time server<input id="ntp" type="text" maxlength="46" placeholder="pool.ntp.org"></label>
@@ -137,7 +128,6 @@ main.container{max-width:48rem}
   <small id="fwMsg" class="muted">Do not switch off the device during the update.</small>
 </article>
 
-<footer class="muted"><small id="fwInfo"></small></footer>
 </main>
 
 <script>
@@ -145,37 +135,7 @@ var $=function(id){return document.getElementById(id);};
 var cfg=null;
 $('homeLink').href=location.protocol+'//'+location.hostname+'/';
 
-var tzMode='local';
-try { tzMode=localStorage.getItem('hyperkDaylightTz')||'local'; } catch(e) {}
-
-function browserZone(){
-  try { return Intl.DateTimeFormat().resolvedOptions().timeZone||'this browser'; } catch(e){ return 'this browser'; }
-}
-function fmt(epoch){
-  if(!epoch) return '-';
-  var o={weekday:'short',hour:'2-digit',minute:'2-digit'};
-  if(tzMode==='utc') o.timeZone='UTC';
-  return new Date(epoch*1000).toLocaleString([],o)+(tzMode==='utc'?' UTC':'');
-}
-function fmtFull(epoch){
-  if(!epoch) return '-';
-  var o={year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'};
-  if(tzMode==='utc') o.timeZone='UTC';
-  return new Date(epoch*1000).toLocaleString([],o)+(tzMode==='utc'?' UTC':'');
-}
-function setTimeZone(mode){
-  tzMode=mode;
-  try { localStorage.setItem('hyperkDaylightTz',mode); } catch(e) {}
-  paintTimeZone();
-  if(lastStatus) render(lastStatus);
-}
-function paintTimeZone(){
-  $('tzLocal').className=(tzMode==='local')?'':'outline';
-  $('tzUtc').className=(tzMode==='utc')?'':'outline';
-  $('tzNote').textContent=(tzMode==='local')
-    ? 'Converted to the time zone of this browser, '+browserZone()+'. The device itself keeps UTC only.'
-    : 'Coordinated Universal Time, exactly what the device runs on.';
-}
+function fmt(epoch){ if(!epoch) return '-'; return new Date(epoch*1000).toLocaleString([],{weekday:'short',hour:'2-digit',minute:'2-digit'}); }
 
 var lastStatus=null;
 
@@ -186,16 +146,13 @@ function render(s){
   else if(s.state==='night'||s.state==='polarNight'){st.classList.add('b-night');st.textContent=(s.state==='polarNight'?'polar night':'dark');}
   else {st.classList.add('b-unknown');st.textContent='unknown';}
   var g=$('stGate'); g.className='badge '+(s.blocked?'b-off':'b-on'); g.textContent=s.blocked?'blocked (LEDs off)':'allowed';
-  var reasons={disabled:'daylight control is disabled',override:'manual override',noLocation:'no location configured',noTime:'waiting for time sync - LEDs stay enabled',day:'it is light outside',night:'it is dark outside'};
+  var reasons={disabled:'daylight control is disabled',override:'manual override',noLocation:'no location configured',noTime:'waiting for the time from the network, LEDs work as usual',day:'it is light outside',night:'it is dark outside'};
   $('stReason').textContent=reasons[s.reason]||s.reason;
-  $('stTime').textContent=s.timeSynced?fmtFull(s.now):'not set yet';
-  var ntp=(s.config&&s.config.ntp)?s.config.ntp:'the time server';
-  $('stSync').textContent=s.timeSynced
-    ? '(fetched from '+ntp+', not adjustable)'
-    : '(waiting for '+ntp+')';
-  $('stRise').textContent=fmt(s.sunrise); $('stSet').textContent=fmt(s.sunset); $('stChange').textContent=fmt(s.nextChange);
+  $('stRise').textContent=fmt(s.sunrise); $('stSet').textContent=fmt(s.sunset);
+  var shifted=s.nextChange&&s.nextChange!==s.sunrise&&s.nextChange!==s.sunset;
+  $('stChangeLabel').hidden=!shifted; $('stChange').hidden=!shifted;
+  $('stChange').textContent=fmt(s.nextChange);
   ['Auto','Allow','Block'].forEach(function(n){var b=$('ov'+n); var active=(s.config.override===n.toLowerCase()); b.className=active?'':'outline';});
-  $('fwInfo').textContent='Hyperk '+s.fw+' · daylight build '+s.build+' · uptime '+s.uptime+'s · free heap '+s.freeHeap+' bytes';
 }
 
 function fillForm(c){
@@ -353,7 +310,6 @@ function uploadFirmware(){
   x.send(fd);
 }
 
-paintTimeZone();
 refresh(true);
 setInterval(function(){refresh(false);},10000);
 </script>
