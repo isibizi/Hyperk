@@ -56,6 +56,7 @@
 #include <WiFiUdp.h>
 #include <DNSServer.h>
 #include "main.h"
+#include "daylight.h"
 #include "web_resources_OSS.h"
 
 namespace {
@@ -173,6 +174,9 @@ void setup() {
         Log::SERIAL_LOG("UDP RealTime listener started on port 21324");
         udpRAW.begin(5568);
         Log::SERIAL_LOG("Raw RGB color stream listener started on port 5568");
+
+        // Daylight gate: location based day/night detection + config UI on port 8080
+        Daylight::begin();
     }
 
     (void)Update;    
@@ -185,9 +189,19 @@ void loop()
     #endif
 
     if (!inAPMode) {
-        UdpReceiver::handleDDP(udpDDP);
-        UdpReceiver::handleRealTime(udpRealTime);
-        UdpReceiver::handleRAW(udpRAW);
+        Daylight::loop();
+
+        if (Daylight::isStreamBlocked()) {
+            // It is light outside (or blocked manually): discard the stream so the
+            // backend sees "stream lost" and switches the LEDs off.
+            Daylight::drainUdp(udpDDP);
+            Daylight::drainUdp(udpRealTime);
+            Daylight::drainUdp(udpRAW);
+        } else {
+            UdpReceiver::handleDDP(udpDDP);
+            UdpReceiver::handleRealTime(udpRealTime);
+            UdpReceiver::handleRAW(udpRAW);
+        }
     }
 
     Manager::processEvents();

@@ -12,6 +12,7 @@ jobs:
       contents: read
 
     strategy:
+      fail-fast: false   # let every board group report its own result
       matrix:
         include:
           - group: ModernESP_C2

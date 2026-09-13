@@ -1,0 +1,166 @@
+name: Release Daylight Firmware
+
+# Builds the firmware with the daylight gate and publishes it as a GitHub Release.
+# Three ways to start it:
+#   1. Change the tag name in .github/daylight-release-tag and push (works from any branch).
+#   2. Push a tag "daylight-v*".
+#   3. Actions -> "Release Daylight Firmware" -> Run workflow (only once the workflow exists on the default branch).
+# The produced OTA_Hyperk_<version>_<board>.bin can be uploaded in the Hyperk web GUI (OTA update).
+
+on:
+  push:
+    branches:
+      - "**"
+    paths:
+      - ".github/daylight-release-tag"
+    tags:
+      - "daylight-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. daylight-v1)"
+        required: true
+        default: "daylight-v1"
+      boards:
+        description: "PlatformIO environments to build (space separated)"
+        required: true
+        default: "esp8266"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      boards: ${{ steps.meta.outputs.boards }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Resolve tag and boards
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+            echo "boards=${{ github.event.inputs.boards }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "boards=esp8266" >> "$GITHUB_OUTPUT"
+          else
+            TAG=$(head -n 1 .github/daylight-release-tag | tr -d '[:space:]')
+            if [ -z "$TAG" ]; then echo "No tag name in .github/daylight-release-tag"; exit 1; fi
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "boards=esp8266" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.platformio/packages
+            ~/.platformio/platforms
+            .ccache
+          key: pio-release-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            pio-release-
+
+      - name: Install PlatformIO + esptool + ccache
+        run: |
+          sudo apt update
+          sudo apt install -y ccache
+          python -m pip install --upgrade pip
+          pip install --upgrade platformio esptool
+
+      - name: Build firmware
+        env:
+          # shown on the daylight page (port 8080) so you can tell which build is running
+          PLATFORMIO_BUILD_FLAGS: -DHYPERK_DAYLIGHT_BUILD=\"${{ steps.meta.outputs.tag }}\"
+        run: |
+          CMD="pio run -j 2"
+          for env in ${{ steps.meta.outputs.boards }}; do
+            CMD="$CMD -e $env"
+          done
+          eval "$CMD"
+          ls -la release/
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: Hyperk-Daylight-Firmware
+          path: release/
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download firmware artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: Hyperk-Daylight-Firmware
+          path: release
+
+      - name: Write release notes
+        run: |
+          cat > notes.md <<'MD'
+          ## Hyperk with daylight control
+
+          The LED strip only follows the TV when it is dark outside. The device works
+          out sunrise and sunset from the coordinates you configure and lets the
+          HyperHDR stream through only at night.
+
+          It is a filter, not a light switch: the LEDs light up because HyperHDR sends
+          a picture, so the TV has to be running. Set the static colour in the main
+          interface to black so the strip really goes dark during the day.
+
+          ### Settings
+
+          After flashing, open `http://hyperk.local:8080/` or `http://<device-ip>:8080/`.
+          Search your place or paste coordinates from Google Maps, choose when it counts
+          as dark, switch the rule on and save. The running version is printed in the
+          page header.
+
+          ### Installing
+
+          Already running a build from this fork? Use the **Firmware update** card on
+          `http://hyperk.local:8080/`, pick `OTA_Hyperk_<version>_esp8266.bin` and flash.
+
+          Coming from the stock firmware? Its interface has no file picker, so use one
+          of these instead. Over the network, with the size replaced by the real byte
+          size of the file:
+
+          ```
+          curl -F "update=@OTA_Hyperk_<version>_esp8266.bin;filename=firmware.bin" \
+               -H "hyperk-ota-firmware-name: OTA_Hyperk_<version>_esp8266.bin" \
+               -H "hyperk-ota-firmware-size: <bytes>" \
+               http://hyperk.local/ota
+          ```
+
+          Or over USB, writing `Hyperk_<version>_esp8266.bin` to address `0x0` with
+          esptool or https://espressif.github.io/esptool-js/. Do not erase the flash,
+          that would wipe your WiFi credentials and LED configuration.
+          MD
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.build.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Hyperk Daylight ${{ needs.build.outputs.tag }}
+          body_path: notes.md
+          files: release/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
