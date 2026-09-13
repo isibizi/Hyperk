@@ -19,6 +19,8 @@ This fork teaches Hyperk one rule: **the LED strip only follows the TV when it i
 
 The device fetches the time over NTP and calculates sunrise and sunset for the coordinates you configure. At night the HyperHDR stream passes through untouched. During the day it is discarded, the firmware sees no signal and switches the LEDs off after the usual stream timeout.
 
+**The clock comes from the network, not from a setting.** The device asks a time server, `pool.ntp.org` by default, and keeps nothing but UTC. It never learns a time zone and never needs one: sunrise and sunset are computed in UTC from your coordinates and compared against UTC. That is why the same firmware works anywhere on earth without being told where "here" is. The settings page converts the times for reading, and the switch in the status card decides whether that is your browser's time zone or plain UTC.
+
 It is a filter, not a light switch. The LEDs light up because HyperHDR sends a picture, so the TV has to be running. With the TV on, the strip comes to life within about five seconds of nightfall and goes dark again a few seconds after sunrise. With the TV off nothing happens either way. Nothing is sent to any server: the sun position is computed on the device from your coordinates and the clock.
 
 ### Settings page
@@ -27,7 +29,7 @@ Open `http://hyperk.local:8080/`, or `http://<device-ip>:8080/`. It uses the sam
 
 | Card | What you do there |
 | :--- | :--- |
-| Status | See whether it is dark, whether the stream is allowed, and the next sunrise and sunset in your local time. Three buttons force the gate open or shut for testing. |
+| Status | See whether it is dark, whether the stream is allowed, and the next sunrise and sunset. Three buttons force the gate open or shut for testing, and a switch shows all times either in the time zone of your browser or in UTC. |
 | Location | Search a place by name, paste coordinates copied from Google Maps such as `48.137154, 11.576124`, paste a whole Maps link, or type latitude and longitude. A preview shows the resulting sun times before you save. |
 | Rules | Switch the whole feature on, pick when it counts as dark, and shift both edges by minutes. |
 | Firmware update | Pick a `.bin` file and flash it. The stock interface on port 80 cannot do this, it only installs releases from the upstream project. |
