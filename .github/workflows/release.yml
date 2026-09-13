@@ -1,10 +1,16 @@
 name: Release Daylight Firmware
 
 # Builds the firmware with the daylight gate and publishes it as a GitHub Release.
-# Start it manually (Actions -> "Release Daylight Firmware" -> Run workflow) or push a tag "daylight-v*".
+# Three ways to start it:
+#   1. Change the tag name in .github/daylight-release-tag and push (works from any branch).
+#   2. Push a tag "daylight-v*".
+#   3. Actions -> "Release Daylight Firmware" -> Run workflow (only once the workflow exists on the default branch).
 # The produced OTA_Hyperk_<version>_<board>.bin can be uploaded in the Hyperk web GUI (OTA update).
 
 on:
+  push:
+    paths:
+      - ".github/daylight-release-tag"
   workflow_dispatch:
     inputs:
       tag:
@@ -38,8 +44,13 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
             echo "boards=${{ github.event.inputs.boards }}" >> "$GITHUB_OUTPUT"
-          else
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
             echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "boards=esp8266" >> "$GITHUB_OUTPUT"
+          else
+            TAG=$(head -n 1 .github/daylight-release-tag | tr -d '[:space:]')
+            if [ -z "$TAG" ]; then echo "No tag name in .github/daylight-release-tag"; exit 1; fi
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
             echo "boards=esp8266" >> "$GITHUB_OUTPUT"
           fi
 
@@ -117,6 +128,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.build.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           name: Hyperk Daylight ${{ needs.build.outputs.tag }}
           body_path: notes.md
           files: release/*

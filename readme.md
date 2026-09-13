@@ -66,7 +66,7 @@ Hyperk can keep the LEDs off while it is light outside. The device gets the time
 
 Notes: set the static color in the main GUI to black so the LEDs are really off during daylight. Without a time sync or without a location the LEDs behave as usual (fail-open). The gate only applies to the network stream (USB serial and Home Assistant are not affected). Available on ESP8266 and ESP32 builds with the async web server; other boards behave as before.
 
-Ready-made firmware: **Actions → Release Daylight Firmware → Run workflow** (or push a tag `daylight-v*`) builds the ESP8266 firmware and publishes it under **Releases**. Upload `OTA_Hyperk_<version>_esp8266.bin` in the OTA section of the Hyperk GUI.
+Ready-made firmware: change the tag name in `.github/daylight-release-tag` (e.g. `daylight-v2`) and push, or push a tag `daylight-v*`, or use **Actions → Release Daylight Firmware → Run workflow**. The workflow builds the ESP8266 firmware and publishes it under **Releases**. Upload `OTA_Hyperk_<version>_esp8266.bin` in the OTA section of the Hyperk GUI.
 
 ---
 *Developed for performance. Optimized for HyperHDR. [Privacy & Technical Note](https://awawa-dev.github.io/hyperk/privacy.html)*
