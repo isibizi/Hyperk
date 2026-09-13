@@ -115,14 +115,40 @@ jobs:
           cat > notes.md <<'MD'
           ## Hyperk with daylight control
 
-          LEDs only light up when it is dark outside at your location (sunrise/sunset calculated from the configured coordinates).
+          The LED strip only follows the TV when it is dark outside. The device works
+          out sunrise and sunset from the coordinates you configure and lets the
+          HyperHDR stream through only at night.
 
-          ### Update over the air (OTA)
-          1. Open the Hyperk web GUI (`http://hyperk.local/` or the device IP).
-          2. Go to the OTA update section and upload `OTA_Hyperk_<version>_esp8266.bin` from this release.
-          3. After the reboot open `http://hyperk.local:8080/` (or `http://<device-ip>:8080/`), search your place or paste Google Maps coordinates, enable "daylight control" and save.
+          It is a filter, not a light switch: the LEDs light up because HyperHDR sends
+          a picture, so the TV has to be running. Set the static colour in the main
+          interface to black so the strip really goes dark during the day.
 
-          `Hyperk_<version>_esp8266.bin` is the same firmware for a first-time flash with esptool / the web flasher.
+          ### Settings
+
+          After flashing, open `http://hyperk.local:8080/` or `http://<device-ip>:8080/`.
+          Search your place or paste coordinates from Google Maps, choose when it counts
+          as dark, switch the rule on and save. The running version is printed in the
+          page header.
+
+          ### Installing
+
+          Already running a build from this fork? Use the **Firmware update** card on
+          `http://hyperk.local:8080/`, pick `OTA_Hyperk_<version>_esp8266.bin` and flash.
+
+          Coming from the stock firmware? Its interface has no file picker, so use one
+          of these instead. Over the network, with the size replaced by the real byte
+          size of the file:
+
+          ```
+          curl -F "update=@OTA_Hyperk_<version>_esp8266.bin;filename=firmware.bin" \
+               -H "hyperk-ota-firmware-name: OTA_Hyperk_<version>_esp8266.bin" \
+               -H "hyperk-ota-firmware-size: <bytes>" \
+               http://hyperk.local/ota
+          ```
+
+          Or over USB, writing `Hyperk_<version>_esp8266.bin` to address `0x0` with
+          esptool or https://espressif.github.io/esptool-js/. Do not erase the flash,
+          that would wipe your WiFi credentials and LED configuration.
           MD
 
       - name: Create GitHub Release

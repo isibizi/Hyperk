@@ -2,6 +2,9 @@
 
 Hyperk is a minimalist, high-performance uni-platform WiFi/Ethernet LED driver for ESP8266, ESP32 (S2, S3, C2, C3, C5, C6), Raspberry Pi Pico W (RP2040, RP2350). Designed as a lightweight and streamlined component that avoids unnecessary complexity, it delivers low‑latency performance and integrates smoothly with platforms such as HyperHDR, while offering essential home‑automation capabilities through a clean, modern codebase.
 
+> [!NOTE]
+> This is a fork. It adds **daylight control**: the LED strip only follows the TV when it is dark outside, worked out from your coordinates. See [Daylight control](#daylight-control-this-fork) below.
+
 ## Installation
 
 The firmware can be flashed directly from your browser:
@@ -9,6 +12,8 @@ The firmware can be flashed directly from your browser:
 
 > [!TIP]
 > Once installed, you can also perform OTA updates directly through the local **Web GUI**.
+> That page installs releases of the upstream project only. To put **this fork** on a
+> device, follow [Installing it the first time](#installing-it-the-first-time).
 
 ---
 
@@ -56,33 +61,69 @@ Includes support for multi-segment (board-dependent), power-relay control, and H
 
 ## Daylight control (this fork)
 
-Hyperk can keep the LEDs off while it is light outside. The device gets the time via NTP, calculates sunrise and sunset for your location and discards the HyperHDR stream during daylight, so the backend switches the LEDs off (stream timeout). At night everything works exactly as before.
+This fork teaches Hyperk one rule: **the LED strip only follows the TV when it is actually dark outside.**
 
-- Open `http://hyperk.local:8080/` (or `http://<device-ip>:8080/`). The page uses the same look as the main GUI.
-- Set your location by searching a place name, by pasting coordinates copied from Google Maps (e.g. `48.137154, 11.576124`, a Maps link also works) or by typing latitude/longitude.
-- Choose when it counts as "dark" (sunset, civil twilight = default, nautical, astronomical) and optional offsets in minutes.
-- Enable the rule and save. The status card shows sunrise/sunset in your local time and whether the stream is currently allowed or blocked. Manual override (always allow / always block) is available for testing.
-- The page also has a **Firmware update** card that takes a `.bin` file directly, which the stock GUI does not offer.
-- API: `GET /api/daylight` returns the status as JSON, add `?at=<unix epoch>` to simulate a moment in time. `POST /api/daylight` takes the same fields as plain form parameters. `GET /api/ping` answers `ok` and is handy to check that the device responds at all.
+The device fetches the time over NTP and calculates sunrise and sunset for the coordinates you configure. At night the HyperHDR stream passes through untouched. During the day it is discarded, the firmware sees no signal and switches the LEDs off after the usual stream timeout.
 
-Notes: set the static color in the main GUI to black so the LEDs are really off during daylight. Without a time sync or without a location the LEDs behave as usual (fail-open). The gate only applies to the network stream (USB serial and Home Assistant are not affected). Available on ESP8266 and ESP32 builds with the async web server; other boards behave as before.
+It is a filter, not a light switch. The LEDs light up because HyperHDR sends a picture, so the TV has to be running. With the TV on, the strip comes to life within about five seconds of nightfall and goes dark again a few seconds after sunrise. With the TV off nothing happens either way. Nothing is sent to any server: the sun position is computed on the device from your coordinates and the clock.
 
-### Installing this firmware the first time
+### Settings page
 
-The stock GUI on port 80 only installs updates from the project's own release server, it has no file picker. The device does accept an upload though, so send the file to its `/ota` endpoint once. Replace the address with your device:
+Open `http://hyperk.local:8080/`, or `http://<device-ip>:8080/`. It uses the same styling as the main Hyperk interface and shows the running firmware version in its header.
+
+| Card | What you do there |
+| :--- | :--- |
+| Status | See whether it is dark, whether the stream is allowed, and the next sunrise and sunset in your local time. Three buttons force the gate open or shut for testing. |
+| Location | Search a place by name, paste coordinates copied from Google Maps such as `48.137154, 11.576124`, paste a whole Maps link, or type latitude and longitude. A preview shows the resulting sun times before you save. |
+| Rules | Switch the whole feature on, pick when it counts as dark, and shift both edges by minutes. |
+| Firmware update | Pick a `.bin` file and flash it. The stock interface on port 80 cannot do this, it only installs releases from the upstream project. |
+
+The place search runs in your browser against the free Open-Meteo geocoding service, so the device itself needs no internet access beyond NTP.
+
+**When it counts as dark** is configurable. The default is civil twilight, six degrees below the horizon, which is roughly half an hour after the sun sets. Sunset itself, nautical and astronomical twilight are also offered, and the two offset fields shift each edge by up to six hours in either direction.
+
+### Good to know
+
+- Set the static colour in the main interface to black, otherwise the LEDs show that colour instead of going dark during the day.
+- Without a time sync or without a location the firmware stays out of the way and the LEDs behave exactly as before.
+- Only the network stream is gated. USB serial streaming and switching the device on through Home Assistant are unaffected.
+- Built for ESP8266 and ESP32 boards with the async web server. On the ESP32-S2 and the Pico the feature is compiled out and those boards behave exactly as before.
+
+### Programmable interface
+
+| Request | Answer |
+| :--- | :--- |
+| `GET /api/daylight` | Status as JSON. Add `?at=<unix epoch>` to ask what the rule would do at another moment, or `?lat=&lon=&altitude=` to try a location without saving it. |
+| `POST /api/daylight` | Takes the same fields as ordinary form parameters, for example `override=block` or `lat=48.14&lon=11.58`. |
+| `GET /api/ping` | Answers `ok`. Useful to check that the device responds at all. |
+| `POST /update` | Takes a firmware file as a normal file upload. |
+
+### Installing it the first time
+
+The interface on port 80 belongs to the upstream project and offers no file picker, so the very first install needs one of these two routes.
+
+**Over the network.** The device does accept an upload on its own `/ota` address, the interface simply never offers it. Download `OTA_Hyperk_<version>_esp8266.bin` from the release page and send it, replacing the address with your device and the size with the real byte size of the file you downloaded:
 
 ```
 curl -F "update=@OTA_Hyperk_0.0.5_esp8266.bin;filename=firmware.bin" \
      -H "hyperk-ota-firmware-name: OTA_Hyperk_0.0.5_esp8266.bin" \
-     -H "hyperk-ota-firmware-size: 488288" \
+     -H "hyperk-ota-firmware-size: 493264" \
      http://hyperk.local/ota
 ```
 
-The file name has to contain the board name (`esp8266`) and the size has to match the file, otherwise the device rejects it. Flashing over USB with esptool or the web flasher works as well.
+The file name must contain the board name, `esp8266`, and the size must match the file exactly, otherwise the device rejects it.
 
-From then on use the **Firmware update** card on `http://hyperk.local:8080/`: choose a `.bin` file, press upload, done.
+**Over USB.** Take `Hyperk_<version>_esp8266.bin` and write it to address `0x0`, either with `esptool` or with the browser based tool at [espressif.github.io/esptool-js](https://espressif.github.io/esptool-js/). Do not erase the flash first, that would wipe your WiFi credentials and LED configuration.
 
-Ready-made firmware: change the tag name in `.github/daylight-release-tag` (e.g. `daylight-v2`) and push, or push a tag `daylight-v*`, or use **Actions → Release Daylight Firmware → Run workflow**. The workflow builds the ESP8266 firmware and publishes it under **Releases**. Upload `OTA_Hyperk_<version>_esp8266.bin` in the OTA section of the Hyperk GUI.
+```
+esptool --chip esp8266 --port /dev/ttyUSB0 write_flash 0x0 Hyperk_0.0.5_esp8266.bin
+```
+
+Afterwards every update goes through the **Firmware update** card on `http://hyperk.local:8080/`.
+
+### Building a release
+
+Change the first line of `.github/daylight-release-tag` to a new tag such as `daylight-v6` and push. The workflow builds the ESP8266 firmware and publishes it under **Releases**. Pushing a tag named `daylight-v*` or starting **Actions → Release Daylight Firmware → Run workflow** does the same.
 
 ---
 *Developed for performance. Optimized for HyperHDR. [Privacy & Technical Note](https://awawa-dev.github.io/hyperk/privacy.html)*
