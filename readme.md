@@ -79,6 +79,9 @@ Afterwards every update goes through the **Firmware update** card on `http://hyp
 
 Change the first line of `.github/daylight-release-tag` to a new tag such as `daylight-v7` and push. The workflow builds **every supported board**, the ESP8266, the whole ESP32 family, the custom boards and the Pico, and publishes them together under **Releases**. Pushing a tag named `daylight-v*` or starting **Actions → Release Daylight Firmware → Run workflow** does the same.
 
+> [!NOTE]
+> The **ESP32-C2** currently does not build. It is the only board PlatformIO compiles through ESP-IDF, and that builder is incompatible with SCons 4.9 and newer, which fails the link step with `No module named 'SCons.Tool.FortranCommon'`. The cause is upstream, not in this code. The board is still attempted on every run, so it will come back on its own once the toolchain is fixed, and it does not fail the rest of the build.
+
 Each board ships as `OTA_Hyperk_<version>_<board>.bin` for updates over the network and `Hyperk_<version>_<board>.bin`, a `.uf2` on the Pico, for a first flash over USB. ESP32 boards additionally get a `_factory.bin` that contains the bootloader and partition table for a completely empty chip.
 
 ---
