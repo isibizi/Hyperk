@@ -7,6 +7,13 @@
 #pragma once
 #include <Arduino.h>
 
+#ifndef APP_VERSION
+    #define APP_VERSION "unknown"
+#endif
+#ifndef HYPERK_DAYLIGHT_BUILD
+    #define HYPERK_DAYLIGHT_BUILD "dev"
+#endif
+
 static const char DAYLIGHT_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -33,7 +40,7 @@ main.container{max-width:48rem}
 <body>
 <main class="container">
 <nav>
-  <ul><li><strong>Hyperk</strong> &middot; Daylight</li></ul>
+  <ul><li><strong>Hyperk</strong> &middot; Daylight <small class="muted">)HTML" APP_VERSION " / " HYPERK_DAYLIGHT_BUILD R"HTML(</small></li></ul>
   <ul><li><a id="homeLink" href="/">Main settings</a></li></ul>
 </nav>
 

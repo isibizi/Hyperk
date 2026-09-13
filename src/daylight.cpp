@@ -100,6 +100,9 @@ namespace {
     bool lastBlocked = false;
     bool loggedNoTime = false;
 
+    char statusBody[768] = "{\"reason\":\"starting\",\"state\":\"unknown\",\"blocked\":false,\"timeSynced\":false}";
+    void buildStatusJson(char* body, size_t bodySize, const DaylightConfig& c, const Status& st, bool sim, bool gateBlocked);
+
     volatile bool updateFailed = false;
     volatile bool rebootRequested = false;
 
@@ -337,6 +340,8 @@ namespace {
         lastSynced = synced;
 
         blocked = st.blocked;
+        buildStatusJson(statusBody, sizeof(statusBody), c, st, false, st.blocked);
+
         if (st.blocked != lastBlocked || force) {
             lastBlocked = st.blocked;
             Log::SERIAL_LOG("Daylight: stream ", st.blocked ? "BLOCKED" : "allowed", " (", st.reason, ")");
@@ -376,11 +381,57 @@ namespace {
     }
 
     /**
-     * @brief Status as JSON. Written with snprintf into a static buffer on purpose:
-     * building a JSON document inside the async callback is too expensive for the
-     * small heap and stack of an ESP8266.
+     * @brief Render the status as JSON with snprintf. No heap, no JSON document:
+     * both are too expensive inside the async callback of an ESP8266.
      */
+    void buildStatusJson(char* body, size_t bodySize, const DaylightConfig& c, const Status& st, bool sim, bool gateBlocked) {
+        char latText[20] = "null", lonText[20] = "null", altText[16];
+        if (hasLocation(c)) {
+            dtostrf(c.lat, 0, 6, latText);
+            dtostrf(c.lon, 0, 6, lonText);
+        }
+        dtostrf(c.altitude, 0, 3, altText);
+
+        snprintf(body, bodySize,
+            "{\"config\":{\"enabled\":%s,\"lat\":%s,\"lon\":%s,\"label\":",
+            c.enabled ? "true" : "false", latText, lonText);
+        appendJsonString(body, bodySize, c.label);
+
+        size_t n = strlen(body);
+        n += snprintf(body + n, bodySize - n,
+            ",\"altitude\":%s,\"riseOffset\":%d,\"setOffset\":%d,\"override\":\"%s\",\"ntp\":",
+            altText, (int)c.riseOffsetMin, (int)c.setOffsetMin, overrideName(c.overrideMode));
+        appendJsonString(body, bodySize, c.ntp);
+
+        n = strlen(body);
+        snprintf(body + n, bodySize - n,
+            "},\"timeSynced\":%s,\"now\":%lu,\"state\":\"%s\",\"blocked\":%s,\"reason\":\"%s\","
+            "\"sunrise\":%lu,\"sunset\":%lu,\"nextChange\":%lu,\"sim\":%s,"
+            "\"fw\":\"%s\",\"build\":\"%s\",\"uptime\":%lu,\"freeHeap\":%lu}",
+            st.timeSynced ? "true" : "false",
+            (unsigned long)(st.now > 0 ? st.now : 0),
+            stateName(st),
+            gateBlocked ? "true" : "false",
+            st.reason,
+            (unsigned long)(st.hasResult && st.result.nextRise > 0 ? st.result.nextRise : 0),
+            (unsigned long)(st.hasResult && st.result.nextSet > 0 ? st.result.nextSet : 0),
+            (unsigned long)(st.hasResult && st.result.nextChange > 0 ? st.result.nextChange : 0),
+            sim ? "true" : "false",
+            APP_VERSION, HYPERK_DAYLIGHT_BUILD,
+            (unsigned long)(millis() / 1000),
+            (unsigned long)ESP.getFreeHeap());
+    }
+
     void handleStatus(AsyncWebServerRequest* request) {
+        // Without query parameters answer from the buffer that loop() keeps up to
+        // date. Nothing is computed inside the async callback in that case.
+        if (request->params() == 0) {
+            AsyncWebServerResponse* cached = request->beginResponse(200, "application/json", statusBody);
+            cached->addHeader("Cache-Control", "no-store");
+            request->send(cached);
+            return;
+        }
+
         DaylightConfig c = snapshotConfig();
         bool sim = false;
 
@@ -407,42 +458,8 @@ namespace {
         Status st;
         evaluate(now, synced, c, st);
 
-        static char body[900];
-        char latText[20] = "null", lonText[20] = "null", altText[16];
-        if (hasLocation(c)) {
-            dtostrf(c.lat, 0, 6, latText);
-            dtostrf(c.lon, 0, 6, lonText);
-        }
-        dtostrf(c.altitude, 0, 3, altText);
-
-        snprintf(body, sizeof(body),
-            "{\"config\":{\"enabled\":%s,\"lat\":%s,\"lon\":%s,\"label\":",
-            c.enabled ? "true" : "false", latText, lonText);
-        appendJsonString(body, sizeof(body), c.label);
-
-        size_t n = strlen(body);
-        n += snprintf(body + n, sizeof(body) - n,
-            ",\"altitude\":%s,\"riseOffset\":%d,\"setOffset\":%d,\"override\":\"%s\",\"ntp\":",
-            altText, (int)c.riseOffsetMin, (int)c.setOffsetMin, overrideName(c.overrideMode));
-        appendJsonString(body, sizeof(body), c.ntp);
-
-        n = strlen(body);
-        snprintf(body + n, sizeof(body) - n,
-            "},\"timeSynced\":%s,\"now\":%lu,\"state\":\"%s\",\"blocked\":%s,\"reason\":\"%s\","
-            "\"sunrise\":%lu,\"sunset\":%lu,\"nextChange\":%lu,\"sim\":%s,"
-            "\"fw\":\"%s\",\"build\":\"%s\",\"uptime\":%lu,\"freeHeap\":%lu}",
-            st.timeSynced ? "true" : "false",
-            (unsigned long)(st.now > 0 ? st.now : 0),
-            stateName(st),
-            (sim ? st.blocked : (bool)blocked) ? "true" : "false",
-            st.reason,
-            (unsigned long)(st.hasResult && st.result.nextRise > 0 ? st.result.nextRise : 0),
-            (unsigned long)(st.hasResult && st.result.nextSet > 0 ? st.result.nextSet : 0),
-            (unsigned long)(st.hasResult && st.result.nextChange > 0 ? st.result.nextChange : 0),
-            sim ? "true" : "false",
-            APP_VERSION, HYPERK_DAYLIGHT_BUILD,
-            (unsigned long)(millis() / 1000),
-            (unsigned long)ESP.getFreeHeap());
+        static char body[768];
+        buildStatusJson(body, sizeof(body), c, st, true, st.blocked);
 
         AsyncWebServerResponse* response = request->beginResponse(200, "application/json", body);
         response->addHeader("Cache-Control", "no-store");
