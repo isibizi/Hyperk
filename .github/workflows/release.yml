@@ -9,8 +9,12 @@ name: Release Daylight Firmware
 
 on:
   push:
+    branches:
+      - "**"
     paths:
       - ".github/daylight-release-tag"
+    tags:
+      - "daylight-v*"
   workflow_dispatch:
     inputs:
       tag:
@@ -21,9 +25,6 @@ on:
         description: "PlatformIO environments to build (space separated)"
         required: true
         default: "esp8266"
-  push:
-    tags:
-      - "daylight-v*"
 
 jobs:
   build:
