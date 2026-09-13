@@ -112,6 +112,15 @@ main.container{max-width:48rem}
   </footer>
 </article>
 
+<article>
+  <header><strong>Firmware update</strong></header>
+  <p class="muted"><small>The main Hyperk page can only install updates from the official release server. Here you can upload a firmware file yourself, for example <code>OTA_Hyperk_0.0.5_esp8266.bin</code> from your own release page.</small></p>
+  <input id="fwFile" type="file" accept=".bin">
+  <button type="button" id="fwBtn" class="secondary" onclick="uploadFirmware()">Upload and flash</button>
+  <progress id="fwProgress" value="0" max="100" style="display:none"></progress>
+  <small id="fwMsg" class="muted">Do not switch off the device during the update.</small>
+</article>
+
 <footer class="muted"><small id="fwInfo"></small></footer>
 </main>
 
@@ -255,6 +264,26 @@ function useBrowserPosition(){
     navigator.geolocation.getCurrentPosition(function(p){ setLocation(p.coords.latitude,p.coords.longitude,null); $('preview').textContent='Browser position applied - remember to save.'; },
       function(){ $('preview').textContent='Browser refused to share the position (most browsers only allow it on https pages). Paste coordinates instead.'; },{timeout:10000});
   }catch(e){ $('preview').textContent='Position not available in this browser. Paste coordinates instead.'; }
+}
+
+function uploadFirmware(){
+  var f=$('fwFile').files[0];
+  if(!f){ $('fwMsg').textContent='Please choose a .bin file first.'; return; }
+  if(!/\.bin$/i.test(f.name)){ $('fwMsg').textContent='This is not a .bin firmware file.'; return; }
+  var bar=$('fwProgress'); bar.style.display='block'; bar.value=0;
+  $('fwBtn').disabled=true;
+  $('fwMsg').textContent='Uploading '+f.name+' ('+Math.round(f.size/1024)+' kB). Do not switch off the device.';
+  var fd=new FormData(); fd.append('update',f,f.name);
+  var x=new XMLHttpRequest();
+  x.open('POST','/update',true);
+  x.upload.onprogress=function(e){ if(e.lengthComputable){ bar.value=Math.round(e.loaded/e.total*100); } };
+  x.onload=function(){
+    $('fwBtn').disabled=false;
+    if(x.status===200){ $('fwMsg').textContent='Done. The device is rebooting, reload this page in about 30 seconds.'; }
+    else { bar.style.display='none'; $('fwMsg').textContent='Failed: '+(x.responseText||x.status)+'. The device keeps its current firmware.'; }
+  };
+  x.onerror=function(){ $('fwBtn').disabled=false; bar.style.display='none'; $('fwMsg').textContent='Connection lost during upload.'; };
+  x.send(fd);
 }
 
 refresh(true);

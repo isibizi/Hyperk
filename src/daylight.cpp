@@ -43,6 +43,11 @@
 #include <ArduinoJson.h>
 #include <ESPAsyncWebServer.h>
 #include <AsyncJson.h>
+#if defined(ARDUINO_ARCH_ESP8266)
+    #include <Updater.h>
+#else
+    #include <Update.h>
+#endif
 #include "sun_calc.h"
 #include "daylight_page.h"
 
@@ -92,6 +97,9 @@ namespace {
     bool lastSynced = false;
     bool lastBlocked = false;
     bool loggedNoTime = false;
+
+    volatile bool updateFailed = false;
+    volatile bool rebootRequested = false;
 
     AsyncWebServer* server = nullptr;
 
@@ -410,6 +418,49 @@ namespace {
         request->send(200, "application/json", "{\"ok\":true}");
     }
 
+    /**
+     * @brief Receive a firmware file and write it to the free sketch space.
+     * The stock GUI on port 80 can only pull updates from the project's own
+     * release server, so this offers a plain file upload instead.
+     */
+    void handleUpdateUpload(AsyncWebServerRequest*, const String& filename, size_t index, uint8_t* data, size_t len, bool final) {
+        if (index == 0) {
+            updateFailed = false;
+            Log::SERIAL_LOG("Daylight: firmware upload started: ", filename.c_str());
+            #if defined(ARDUINO_ARCH_ESP8266)
+                Update.runAsync(true);
+                const uint32_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+                if (!Update.begin(maxSketchSpace)) updateFailed = true;
+            #else
+                if (!Update.begin(UPDATE_SIZE_UNKNOWN)) updateFailed = true;
+            #endif
+            if (updateFailed) Log::SERIAL_LOG("Daylight: Update.begin failed");
+        }
+
+        if (!updateFailed && len > 0 && Update.write(data, len) != len) {
+            updateFailed = true;
+            Log::SERIAL_LOG("Daylight: Update.write failed");
+        }
+
+        if (final) {
+            if (!updateFailed && !Update.end(true)) {
+                updateFailed = true;
+                Log::SERIAL_LOG("Daylight: Update.end failed");
+            } else if (!updateFailed) {
+                Log::SERIAL_LOG("Daylight: firmware written, rebooting");
+            }
+        }
+    }
+
+    void handleUpdateResult(AsyncWebServerRequest* request) {
+        const bool ok = !updateFailed && !Update.hasError();
+        AsyncWebServerResponse* response = request->beginResponse(ok ? 200 : 400, "text/plain",
+            ok ? "Firmware written. The device is rebooting." : "Firmware update failed. The device keeps the current firmware.");
+        response->addHeader("Connection", "close");
+        request->send(response);
+        if (ok) rebootRequested = true;   // actual reboot is scheduled from loop()
+    }
+
     void setupWebServer() {
         server = new AsyncWebServer(DAYLIGHT_PORT);
 
@@ -426,6 +477,8 @@ namespace {
         post->setMethod(HTTP_POST);
         post->setMaxContentLength(1024);
         server->addHandler(post);
+
+        server->on("/update", HTTP_POST, handleUpdateResult, handleUpdateUpload);
 
         server->onNotFound([](AsyncWebServerRequest* request) {
             request->send(404, "text/plain", "Not found");
@@ -444,6 +497,11 @@ void Daylight::begin() {
 }
 
 void Daylight::loop() {
+    if (rebootRequested) {
+        rebootRequested = false;
+        Manager::scheduleReboot(1500);
+    }
+
     if (hasPending) {
         lockCfg();
         DaylightConfig c = pendingCfg;

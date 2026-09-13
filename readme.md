@@ -62,9 +62,25 @@ Hyperk can keep the LEDs off while it is light outside. The device gets the time
 - Set your location by searching a place name, by pasting coordinates copied from Google Maps (e.g. `48.137154, 11.576124`, a Maps link also works) or by typing latitude/longitude.
 - Choose when it counts as "dark" (sunset, civil twilight = default, nautical, astronomical) and optional offsets in minutes.
 - Enable the rule and save. The status card shows sunrise/sunset in your local time and whether the stream is currently allowed or blocked. Manual override (always allow / always block) is available for testing.
+- The page also has a **Firmware update** card that takes a `.bin` file directly, which the stock GUI does not offer.
 - JSON API: `GET /api/daylight` (status, add `?at=<unix epoch>` to simulate a time) and `POST /api/daylight` with the same `config` fields.
 
 Notes: set the static color in the main GUI to black so the LEDs are really off during daylight. Without a time sync or without a location the LEDs behave as usual (fail-open). The gate only applies to the network stream (USB serial and Home Assistant are not affected). Available on ESP8266 and ESP32 builds with the async web server; other boards behave as before.
+
+### Installing this firmware the first time
+
+The stock GUI on port 80 only installs updates from the project's own release server, it has no file picker. The device does accept an upload though, so send the file to its `/ota` endpoint once. Replace the address with your device:
+
+```
+curl -F "update=@OTA_Hyperk_0.0.5_esp8266.bin;filename=firmware.bin" \
+     -H "hyperk-ota-firmware-name: OTA_Hyperk_0.0.5_esp8266.bin" \
+     -H "hyperk-ota-firmware-size: 488288" \
+     http://hyperk.local/ota
+```
+
+The file name has to contain the board name (`esp8266`) and the size has to match the file, otherwise the device rejects it. Flashing over USB with esptool or the web flasher works as well.
+
+From then on use the **Firmware update** card on `http://hyperk.local:8080/`: choose a `.bin` file, press upload, done.
 
 Ready-made firmware: change the tag name in `.github/daylight-release-tag` (e.g. `daylight-v2`) and push, or push a tag `daylight-v*`, or use **Actions → Release Daylight Firmware → Run workflow**. The workflow builds the ESP8266 firmware and publishes it under **Releases**. Upload `OTA_Hyperk_<version>_esp8266.bin` in the OTA section of the Hyperk GUI.
 
