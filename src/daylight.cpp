@@ -39,6 +39,7 @@
 
 #include <time.h>
 #include <cmath>
+#include <cstdlib>
 #if __has_include(<stdlib_noniso.h>)
     #include <stdlib_noniso.h>   // dtostrf
 #endif
@@ -100,10 +101,17 @@ namespace {
     bool lastBlocked = false;
     bool loggedNoTime = false;
 
-    char statusBody[768] = "{\"reason\":\"starting\",\"state\":\"unknown\",\"blocked\":false,\"timeSynced\":false}";
+    // Written by loop(), read by the async network task. Two buffers with an index
+    // swap keep a request from ever reading a half written answer.
+    char statusBuf[2][768] = {
+        "{\"reason\":\"starting\",\"state\":\"unknown\",\"blocked\":false,\"timeSynced\":false}",
+        "{\"reason\":\"starting\",\"state\":\"unknown\",\"blocked\":false,\"timeSynced\":false}"
+    };
+    volatile uint8_t statusIdx = 0;
     void buildStatusJson(char* body, size_t bodySize, const DaylightConfig& c, const Status& st, bool sim, bool gateBlocked);
 
     volatile bool updateFailed = false;
+    volatile bool updateStarted = false;
     volatile bool rebootRequested = false;
 
     AsyncWebServer* server = nullptr;
@@ -252,13 +260,22 @@ namespace {
         JsonDocument doc;
         configToJson(c, doc.to<JsonObject>());
 
+        LittleFS.remove(CONFIG_TMP);
         File f = LittleFS.open(CONFIG_TMP, "w");
         if (!f) {
             Log::SERIAL_LOG("Daylight: cannot open config for writing");
             return false;
         }
-        serializeJson(doc, f);
+        const size_t expected = measureJson(doc);
+        const size_t written = serializeJson(doc, f);
         f.close();
+
+        if (written == 0 || written != expected) {
+            // out of space: keep the file that is already there
+            Log::SERIAL_LOG("Daylight: writing config failed, keeping the previous one");
+            LittleFS.remove(CONFIG_TMP);
+            return false;
+        }
 
         LittleFS.remove(CONFIG_FILE);
         if (!LittleFS.rename(CONFIG_TMP, CONFIG_FILE)) {
@@ -340,7 +357,9 @@ namespace {
         lastSynced = synced;
 
         blocked = st.blocked;
-        buildStatusJson(statusBody, sizeof(statusBody), c, st, false, st.blocked);
+        const uint8_t back = statusIdx ^ 1;
+        buildStatusJson(statusBuf[back], sizeof(statusBuf[back]), c, st, false, st.blocked);
+        statusIdx = back;
 
         if (st.blocked != lastBlocked || force) {
             lastBlocked = st.blocked;
@@ -426,7 +445,7 @@ namespace {
         // Without query parameters answer from the buffer that loop() keeps up to
         // date. Nothing is computed inside the async callback in that case.
         if (request->params() == 0) {
-            AsyncWebServerResponse* cached = request->beginResponse(200, "application/json", statusBody);
+            AsyncWebServerResponse* cached = request->beginResponse(200, "application/json", statusBuf[statusIdx]);
             cached->addHeader("Cache-Control", "no-store");
             request->send(cached);
             return;
@@ -466,6 +485,21 @@ namespace {
         request->send(response);
     }
 
+    /**
+     * @brief Strict number parsing: "north" must not silently become 0.
+     */
+    bool toNumber(const String& v, double& out) {
+        if (v.length() == 0) return false;
+        char* end = nullptr;
+        const double n = strtod(v.c_str(), &end);
+        if (end == v.c_str()) return false;
+        while (*end == ' ' || *end == '\t') ++end;
+        if (*end != '\0') return false;
+        if (std::isnan(n) || std::isinf(n)) return false;
+        out = n;
+        return true;
+    }
+
     bool paramText(AsyncWebServerRequest* request, const char* name, String& out) {
         if (!request->hasParam(name, true)) return false;
         out = request->getParam(name, true)->value();
@@ -486,28 +520,28 @@ namespace {
             dst.lon = NAN;
         }
         if (paramText(request, "lat", v)) {
-            const double n = v.toDouble();
-            if (v.length() == 0 || n < -90.0 || n > 90.0) { error = "lat out of range"; return false; }
+            double n;
+            if (!toNumber(v, n) || n < -90.0 || n > 90.0) { error = "lat is not a valid number"; return false; }
             dst.lat = n;
         }
         if (paramText(request, "lon", v)) {
-            const double n = v.toDouble();
-            if (v.length() == 0 || n < -180.0 || n > 180.0) { error = "lon out of range"; return false; }
+            double n;
+            if (!toNumber(v, n) || n < -180.0 || n > 180.0) { error = "lon is not a valid number"; return false; }
             dst.lon = n;
         }
         if (paramText(request, "altitude", v)) {
-            const double n = v.toDouble();
-            if (n < -18.0 || n > 0.0) { error = "altitude out of range"; return false; }
+            double n;
+            if (!toNumber(v, n) || n < -18.0 || n > 0.0) { error = "altitude is not a valid number"; return false; }
             dst.altitude = (float)n;
         }
         if (paramText(request, "riseOffset", v)) {
-            const long n = v.toInt();
-            if (n < -360 || n > 360) { error = "riseOffset out of range"; return false; }
+            double n;
+            if (!toNumber(v, n) || n < -360 || n > 360) { error = "riseOffset is not a valid number"; return false; }
             dst.riseOffsetMin = (int16_t)n;
         }
         if (paramText(request, "setOffset", v)) {
-            const long n = v.toInt();
-            if (n < -360 || n > 360) { error = "setOffset out of range"; return false; }
+            double n;
+            if (!toNumber(v, n) || n < -360 || n > 360) { error = "setOffset is not a valid number"; return false; }
             dst.setOffsetMin = (int16_t)n;
         }
         if (paramText(request, "override", v)) {
@@ -544,10 +578,24 @@ namespace {
      * The stock GUI on port 80 can only pull updates from the project's own
      * release server, so this offers a plain file upload instead.
      */
+    /**
+     * @brief Disarm the updater so a cancelled upload cannot block the next one.
+     */
+    void abortUpdate() {
+        #if defined(ARDUINO_ARCH_ESP8266)
+            if (Update.isRunning()) Update.end(false);
+            Update.clearError();
+        #else
+            if (Update.isRunning()) Update.abort();
+        #endif
+    }
+
     void handleUpdateUpload(AsyncWebServerRequest*, const String& filename, size_t index, uint8_t* data, size_t len, bool final) {
         if (index == 0) {
             updateFailed = false;
+            updateStarted = true;
             Log::SERIAL_LOG("Daylight: firmware upload started: ", filename.c_str());
+            abortUpdate();   // a previous upload may have been cut off half way
             #if defined(ARDUINO_ARCH_ESP8266)
                 Update.runAsync(true);
                 const uint32_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
@@ -561,19 +609,31 @@ namespace {
         if (!updateFailed && len > 0 && Update.write(data, len) != len) {
             updateFailed = true;
             Log::SERIAL_LOG("Daylight: Update.write failed");
+            abortUpdate();
         }
 
         if (final) {
-            if (!updateFailed && !Update.end(true)) {
+            if (updateFailed) {
+                abortUpdate();
+            } else if (!Update.end(true)) {
                 updateFailed = true;
                 Log::SERIAL_LOG("Daylight: Update.end failed");
-            } else if (!updateFailed) {
+                abortUpdate();
+            } else {
                 Log::SERIAL_LOG("Daylight: firmware written, rebooting");
             }
         }
     }
 
     void handleUpdateResult(AsyncWebServerRequest* request) {
+        const bool started = updateStarted;
+        updateStarted = false;
+        if (!started) {
+            // no file in the request: never reboot on that
+            request->send(400, "text/plain", "No firmware file was uploaded.");
+            return;
+        }
+
         const bool ok = !updateFailed && !Update.hasError();
         AsyncWebServerResponse* response = request->beginResponse(ok ? 200 : 400, "text/plain",
             ok ? "Firmware written. The device is rebooting." : "Firmware update failed. The device keeps the current firmware.");
@@ -632,7 +692,8 @@ void Daylight::loop() {
         unlockCfg();
 
         saveConfig(c);
-        if (ntpChanged) startNtp(c.ntp);
+        // cfg has static storage: lwIP keeps the pointer we hand to configTime()
+        if (ntpChanged) startNtp(cfg.ntp);
         loggedNoTime = false;
         refresh(true);
     }

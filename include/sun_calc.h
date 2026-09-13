@@ -100,8 +100,11 @@ namespace SunCalc {
             ev.rise = ev.set = ev.transit;
         } else if (cosOmega <= -1.0) {
             ev.kind = DayKind::PolarDay;
-            ev.rise = ev.transit - 43200.0;
-            ev.set  = ev.transit + 43200.0;
+            // Half a day either side of solar noon plus a margin, so that the spans of
+            // consecutive polar days overlap. Without it the drift of solar noon leaves
+            // short gaps in which the light would be reported as gone.
+            ev.rise = ev.transit - 44100.0;
+            ev.set  = ev.transit + 44100.0;
         } else {
             const double omegaDeg = std::acos(cosOmega) / DEG;
             ev.kind = DayKind::Normal;
@@ -137,18 +140,19 @@ namespace SunCalc {
                 continue;
             }
 
-            int64_t lightStart, lightEnd;
             if (ev.kind == DayKind::PolarDay) {
-                lightStart = static_cast<int64_t>(std::llround(ev.rise));
-                lightEnd   = static_cast<int64_t>(std::llround(ev.set));
-            } else {
-                const int64_t rise = static_cast<int64_t>(std::llround(ev.rise));
-                const int64_t set  = static_cast<int64_t>(std::llround(ev.set));
-                consider(rise, r.nextRise);
-                consider(set,  r.nextSet);
-                lightStart = rise + p.riseOffsetSec;
-                lightEnd   = set  + p.setOffsetSec;
+                const int64_t from = static_cast<int64_t>(std::llround(ev.rise));
+                const int64_t to   = static_cast<int64_t>(std::llround(ev.set));
+                if (t >= from && t < to) r.isDay = true;
+                continue;   // these bounds are artificial, never report them as events
             }
+
+            const int64_t rise = static_cast<int64_t>(std::llround(ev.rise));
+            const int64_t set  = static_cast<int64_t>(std::llround(ev.set));
+            consider(rise, r.nextRise);
+            consider(set,  r.nextSet);
+            const int64_t lightStart = rise + p.riseOffsetSec;
+            const int64_t lightEnd   = set  + p.setOffsetSec;
 
             if (t >= lightStart && t < lightEnd) r.isDay = true;
             consider(lightStart, r.nextChange);

@@ -86,6 +86,25 @@ int main() {
     expectBool("Longyearbyen June midnight is day", SunCalc::evaluate(1782000000, lyr).isDay, true);
     expectBool("Longyearbyen December noon is night", SunCalc::evaluate(1797854400, lyr).isDay, false);
 
+    // Polar day must stay continuous: sweep a whole arctic summer minute by minute
+    // and make sure the light never flickers off.
+    {
+        SunCalc::Params lyrSweep{78.2232, 15.6267, -0.833, 0, 0};
+        int64_t gaps = 0;
+        for (int64_t t = 1779408000; t < 1782000000; t += 60) {   // 2026-05-22 .. 2026-06-21 UTC
+            if (!SunCalc::evaluate(t, lyrSweep).isDay) gaps++;
+        }
+        expectNear("Longyearbyen polar day has no dark minutes", (double)gaps, 0.0, 0.0);
+    }
+
+    // A normal day must report a sensible next change in both directions
+    {
+        SunCalc::Params p{MUC_LAT, MUC_LON, -6.0, 0, 0};
+        auto r = SunCalc::evaluate(1789300800, p);
+        expectBool("Munich next change lies ahead", r.nextChange > 1789300800, true);
+        expectBool("Munich next change within a day", r.nextChange < 1789300800 + 86400, true);
+    }
+
     std::printf("\n%s (%d failures)\n", failures ? "FAILED" : "ALL PASSED", failures);
     return failures ? 1 : 0;
 }
