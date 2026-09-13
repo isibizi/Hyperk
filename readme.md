@@ -63,7 +63,7 @@ Hyperk can keep the LEDs off while it is light outside. The device gets the time
 - Choose when it counts as "dark" (sunset, civil twilight = default, nautical, astronomical) and optional offsets in minutes.
 - Enable the rule and save. The status card shows sunrise/sunset in your local time and whether the stream is currently allowed or blocked. Manual override (always allow / always block) is available for testing.
 - The page also has a **Firmware update** card that takes a `.bin` file directly, which the stock GUI does not offer.
-- JSON API: `GET /api/daylight` (status, add `?at=<unix epoch>` to simulate a time) and `POST /api/daylight` with the same `config` fields.
+- API: `GET /api/daylight` returns the status as JSON, add `?at=<unix epoch>` to simulate a moment in time. `POST /api/daylight` takes the same fields as plain form parameters. `GET /api/ping` answers `ok` and is handy to check that the device responds at all.
 
 Notes: set the static color in the main GUI to black so the LEDs are really off during daylight. Without a time sync or without a location the LEDs behave as usual (fail-open). The gate only applies to the network stream (USB serial and Home Assistant are not affected). Available on ESP8266 and ESP32 builds with the async web server; other boards behave as before.
 

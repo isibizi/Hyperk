@@ -39,10 +39,12 @@
 
 #include <time.h>
 #include <cmath>
+#if __has_include(<stdlib_noniso.h>)
+    #include <stdlib_noniso.h>   // dtostrf
+#endif
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <ESPAsyncWebServer.h>
-#include <AsyncJson.h>
 #if defined(ARDUINO_ARCH_ESP8266)
     #include <Updater.h>
 #else
@@ -353,6 +355,31 @@ namespace {
         return true;
     }
 
+    /**
+     * @brief Append a JSON string value, escaping what JSON requires.
+     */
+    void appendJsonString(char* out, size_t outSize, const char* value) {
+        size_t n = strlen(out);
+        if (n + 1 >= outSize) return;
+        out[n++] = '"';
+        for (const char* p = value; *p && n + 7 < outSize; ++p) {
+            const unsigned char ch = (unsigned char)*p;
+            if (ch == '"' || ch == '\\') { out[n++] = '\\'; out[n++] = (char)ch; }
+            else if (ch == '\n') { out[n++] = '\\'; out[n++] = 'n'; }
+            else if (ch == '\r') { out[n++] = '\\'; out[n++] = 'r'; }
+            else if (ch == '\t') { out[n++] = '\\'; out[n++] = 't'; }
+            else if (ch < 0x20) { n += snprintf(out + n, outSize - n, "\\u%04x", ch); }
+            else out[n++] = (char)ch;
+        }
+        if (n + 1 < outSize) out[n++] = '"';
+        out[n] = 0;
+    }
+
+    /**
+     * @brief Status as JSON. Written with snprintf into a static buffer on purpose:
+     * building a JSON document inside the async callback is too expensive for the
+     * small heap and stack of an ESP8266.
+     */
     void handleStatus(AsyncWebServerRequest* request) {
         DaylightConfig c = snapshotConfig();
         bool sim = false;
@@ -380,35 +407,112 @@ namespace {
         Status st;
         evaluate(now, synced, c, st);
 
-        AsyncJsonResponse* response = new AsyncJsonResponse();
-        JsonObject root = response->getRoot().to<JsonObject>();
-        configToJson(c, root["config"].to<JsonObject>());
-        root["timeSynced"] = st.timeSynced;
-        root["now"] = (int64_t)st.now;
-        root["state"] = stateName(st);
-        root["blocked"] = sim ? st.blocked : (bool)blocked;
-        root["reason"] = st.reason;
-        root["sunrise"] = st.hasResult ? st.result.nextRise : (int64_t)0;
-        root["sunset"] = st.hasResult ? st.result.nextSet : (int64_t)0;
-        root["nextChange"] = st.hasResult ? st.result.nextChange : (int64_t)0;
-        root["sim"] = sim;
-        root["fw"] = APP_VERSION;
-        root["build"] = HYPERK_DAYLIGHT_BUILD;
-        root["uptime"] = (uint32_t)(millis() / 1000);
-        root["freeHeap"] = (uint32_t)ESP.getFreeHeap();
+        static char body[900];
+        char latText[20] = "null", lonText[20] = "null", altText[16];
+        if (hasLocation(c)) {
+            dtostrf(c.lat, 0, 6, latText);
+            dtostrf(c.lon, 0, 6, lonText);
+        }
+        dtostrf(c.altitude, 0, 3, altText);
+
+        snprintf(body, sizeof(body),
+            "{\"config\":{\"enabled\":%s,\"lat\":%s,\"lon\":%s,\"label\":",
+            c.enabled ? "true" : "false", latText, lonText);
+        appendJsonString(body, sizeof(body), c.label);
+
+        size_t n = strlen(body);
+        n += snprintf(body + n, sizeof(body) - n,
+            ",\"altitude\":%s,\"riseOffset\":%d,\"setOffset\":%d,\"override\":\"%s\",\"ntp\":",
+            altText, (int)c.riseOffsetMin, (int)c.setOffsetMin, overrideName(c.overrideMode));
+        appendJsonString(body, sizeof(body), c.ntp);
+
+        n = strlen(body);
+        snprintf(body + n, sizeof(body) - n,
+            "},\"timeSynced\":%s,\"now\":%lu,\"state\":\"%s\",\"blocked\":%s,\"reason\":\"%s\","
+            "\"sunrise\":%lu,\"sunset\":%lu,\"nextChange\":%lu,\"sim\":%s,"
+            "\"fw\":\"%s\",\"build\":\"%s\",\"uptime\":%lu,\"freeHeap\":%lu}",
+            st.timeSynced ? "true" : "false",
+            (unsigned long)(st.now > 0 ? st.now : 0),
+            stateName(st),
+            (sim ? st.blocked : (bool)blocked) ? "true" : "false",
+            st.reason,
+            (unsigned long)(st.hasResult && st.result.nextRise > 0 ? st.result.nextRise : 0),
+            (unsigned long)(st.hasResult && st.result.nextSet > 0 ? st.result.nextSet : 0),
+            (unsigned long)(st.hasResult && st.result.nextChange > 0 ? st.result.nextChange : 0),
+            sim ? "true" : "false",
+            APP_VERSION, HYPERK_DAYLIGHT_BUILD,
+            (unsigned long)(millis() / 1000),
+            (unsigned long)ESP.getFreeHeap());
+
+        AsyncWebServerResponse* response = request->beginResponse(200, "application/json", body);
         response->addHeader("Cache-Control", "no-store");
-        response->setLength();
         request->send(response);
     }
 
-    void handleConfigPost(AsyncWebServerRequest* request, JsonVariant& json) {
+    bool paramText(AsyncWebServerRequest* request, const char* name, String& out) {
+        if (!request->hasParam(name, true)) return false;
+        out = request->getParam(name, true)->value();
+        return true;
+    }
+
+    /**
+     * @brief Apply posted form fields. Plain form encoding keeps the request path
+     * free of JSON parsing, which matters on the ESP8266.
+     */
+    bool applyParams(AsyncWebServerRequest* request, DaylightConfig& dst, const char*& error) {
+        error = nullptr;
+        String v;
+
+        if (paramText(request, "enabled", v)) dst.enabled = (v == "1" || v == "true");
+        if (paramText(request, "clearLocation", v) && (v == "1" || v == "true")) {
+            dst.lat = NAN;
+            dst.lon = NAN;
+        }
+        if (paramText(request, "lat", v)) {
+            const double n = v.toDouble();
+            if (v.length() == 0 || n < -90.0 || n > 90.0) { error = "lat out of range"; return false; }
+            dst.lat = n;
+        }
+        if (paramText(request, "lon", v)) {
+            const double n = v.toDouble();
+            if (v.length() == 0 || n < -180.0 || n > 180.0) { error = "lon out of range"; return false; }
+            dst.lon = n;
+        }
+        if (paramText(request, "altitude", v)) {
+            const double n = v.toDouble();
+            if (n < -18.0 || n > 0.0) { error = "altitude out of range"; return false; }
+            dst.altitude = (float)n;
+        }
+        if (paramText(request, "riseOffset", v)) {
+            const long n = v.toInt();
+            if (n < -360 || n > 360) { error = "riseOffset out of range"; return false; }
+            dst.riseOffsetMin = (int16_t)n;
+        }
+        if (paramText(request, "setOffset", v)) {
+            const long n = v.toInt();
+            if (n < -360 || n > 360) { error = "setOffset out of range"; return false; }
+            dst.setOffsetMin = (int16_t)n;
+        }
+        if (paramText(request, "override", v)) {
+            if (v == "auto") dst.overrideMode = OVERRIDE_AUTO;
+            else if (v == "allow") dst.overrideMode = OVERRIDE_ALLOW;
+            else if (v == "block") dst.overrideMode = OVERRIDE_BLOCK;
+            else { error = "override must be auto, allow or block"; return false; }
+        }
+        if (paramText(request, "label", v)) strlcpy(dst.label, v.c_str(), sizeof(dst.label));
+        if (paramText(request, "ntp", v)) {
+            strlcpy(dst.ntp, v.length() ? v.c_str() : "pool.ntp.org", sizeof(dst.ntp));
+        }
+        return true;
+    }
+
+    void handleConfigPost(AsyncWebServerRequest* request) {
         DaylightConfig c = snapshotConfig();
         const char* error = nullptr;
-        if (!applyJson(json.as<JsonVariantConst>(), c, error)) {
-            String body = "{\"ok\":false,\"error\":\"";
-            body += error ? error : "invalid";
-            body += "\"}";
-            request->send(400, "application/json", body);
+        if (!applyParams(request, c, error)) {
+            static char err[96];
+            snprintf(err, sizeof(err), "{\"ok\":false,\"error\":\"%s\"}", error ? error : "invalid");
+            request->send(400, "application/json", err);
             return;
         }
         lockCfg();
@@ -471,12 +575,12 @@ namespace {
             request->send(response);
         });
 
-        server->on("/api/daylight", HTTP_GET, handleStatus);
+        server->on("/api/ping", HTTP_GET, [](AsyncWebServerRequest* request) {
+            request->send(200, "text/plain", "ok");
+        });
 
-        AsyncCallbackJsonWebHandler* post = new AsyncCallbackJsonWebHandler("/api/daylight", handleConfigPost);
-        post->setMethod(HTTP_POST);
-        post->setMaxContentLength(1024);
-        server->addHandler(post);
+        server->on("/api/daylight", HTTP_GET, handleStatus);
+        server->on("/api/daylight", HTTP_POST, handleConfigPost);
 
         server->on("/update", HTTP_POST, handleUpdateResult, handleUpdateUpload);
 

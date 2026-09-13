@@ -158,11 +158,25 @@ function fillForm(c){
   $('setOffset').value=c.setOffset; $('riseOffset').value=c.riseOffset; $('ntp').value=c.ntp||'';
 }
 
-function refresh(initial){
-  fetch('/api/daylight',{cache:'no-store'}).then(function(r){return r.json();}).then(function(s){
-    render(s);
+function fetchStatus(q){
+  return fetch(q||'/api/daylight',{cache:'no-store'}).then(function(r){
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.text();
+  }).then(function(t){
+    if(!t) throw new Error('empty answer');
+    try { return JSON.parse(t); } catch(e){ throw new Error('bad answer: '+t.slice(0,60)); }
+  });
+}
+
+function refresh(initial,attempt){
+  attempt=attempt||1;
+  fetchStatus().then(function(s){
+    try { render(s); } catch(e){ $('stReason').textContent='display error: '+e.message; }
     if(initial||!cfg){ cfg=s.config; fillForm(cfg); preview(); }
-  }).catch(function(){ $('stReason').textContent='device not reachable'; });
+  }).catch(function(err){
+    if(attempt<4){ setTimeout(function(){ refresh(initial,attempt+1); },800); return; }
+    $('stReason').textContent='no answer from the device ('+err.message+')';
+  });
 }
 
 function collect(){
@@ -175,7 +189,9 @@ function collect(){
 }
 
 function post(body,msgEl,okText){
-  return fetch('/api/daylight',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+  var form=new URLSearchParams();
+  for(var k in body){ if(body[k]!==undefined&&body[k]!==null) form.append(k,body[k]); }
+  return fetch('/api/daylight',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form.toString()})
     .then(function(r){return r.json();})
     .then(function(j){ if(j.ok){ if(msgEl) msgEl.textContent=okText; setTimeout(function(){refresh(true);},600); } else { if(msgEl) msgEl.textContent='Error: '+(j.error||'rejected'); } })
     .catch(function(){ if(msgEl) msgEl.textContent='Error: device not reachable'; });
@@ -196,7 +212,7 @@ function preview(){
     var lat=parseFloat($('lat').value), lon=parseFloat($('lon').value);
     if(isNaN(lat)||isNaN(lon)){ $('preview').textContent=''; return; }
     var q='/api/daylight?lat='+lat+'&lon='+lon+'&altitude='+$('altitude').value+'&setOffset='+($('setOffset').value||0)+'&riseOffset='+($('riseOffset').value||0);
-    fetch(q,{cache:'no-store'}).then(function(r){return r.json();}).then(function(s){
+    fetchStatus(q).then(function(s){
       if(!s.timeSynced){ $('preview').textContent='Preview available once the device time is synchronized.'; return; }
       var txt='For this location: next sunrise '+fmt(s.sunrise)+', next sunset '+fmt(s.sunset)+'. Right now it is '+(s.blocked?'light (LEDs would be off)':'dark (LEDs allowed)')+'.';
       if(s.state==='polarDay') txt='Polar day at this location - LEDs would stay off all day.';
