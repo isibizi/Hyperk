@@ -50,8 +50,23 @@ Includes support for multi-segment (board-dependent), power-relay control, and H
 | UDP DDP | 4048 | DDP listener |
 | UDP RealTime | 21324 | Real-time stream listener |
 | UDP Raw RGB | 5568 | Raw color stream listener |
+| Daylight UI | 8080 | Location based day/night control (this fork) |
   
 <small>LEDs turn off automatically 6.5s after stream loss.</small>
+
+## Daylight control (this fork)
+
+Hyperk can keep the LEDs off while it is light outside. The device gets the time via NTP, calculates sunrise and sunset for your location and discards the HyperHDR stream during daylight, so the backend switches the LEDs off (stream timeout). At night everything works exactly as before.
+
+- Open `http://hyperk.local:8080/` (or `http://<device-ip>:8080/`). The page uses the same look as the main GUI.
+- Set your location by searching a place name, by pasting coordinates copied from Google Maps (e.g. `48.137154, 11.576124`, a Maps link also works) or by typing latitude/longitude.
+- Choose when it counts as "dark" (sunset, civil twilight = default, nautical, astronomical) and optional offsets in minutes.
+- Enable the rule and save. The status card shows sunrise/sunset in your local time and whether the stream is currently allowed or blocked. Manual override (always allow / always block) is available for testing.
+- JSON API: `GET /api/daylight` (status, add `?at=<unix epoch>` to simulate a time) and `POST /api/daylight` with the same `config` fields.
+
+Notes: set the static color in the main GUI to black so the LEDs are really off during daylight. Without a time sync or without a location the LEDs behave as usual (fail-open). The gate only applies to the network stream (USB serial and Home Assistant are not affected). Available on ESP8266 and ESP32 builds with the async web server; other boards behave as before.
+
+Ready-made firmware: **Actions → Release Daylight Firmware → Run workflow** (or push a tag `daylight-v*`) builds the ESP8266 firmware and publishes it under **Releases**. Upload `OTA_Hyperk_<version>_esp8266.bin` in the OTA section of the Hyperk GUI.
 
 ---
 *Developed for performance. Optimized for HyperHDR. [Privacy & Technical Note](https://awawa-dev.github.io/hyperk/privacy.html)*

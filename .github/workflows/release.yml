@@ -1,0 +1,127 @@
+name: Release Daylight Firmware
+
+# Builds the firmware with the daylight gate and publishes it as a GitHub Release.
+# Start it manually (Actions -> "Release Daylight Firmware" -> Run workflow) or push a tag "daylight-v*".
+# The produced OTA_Hyperk_<version>_<board>.bin can be uploaded in the Hyperk web GUI (OTA update).
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. daylight-v1)"
+        required: true
+        default: "daylight-v1"
+      boards:
+        description: "PlatformIO environments to build (space separated)"
+        required: true
+        default: "esp8266"
+  push:
+    tags:
+      - "daylight-v*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      boards: ${{ steps.meta.outputs.boards }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Resolve tag and boards
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+            echo "boards=${{ github.event.inputs.boards }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "boards=esp8266" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.platformio/packages
+            ~/.platformio/platforms
+            .ccache
+          key: pio-release-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            pio-release-
+
+      - name: Install PlatformIO + esptool + ccache
+        run: |
+          sudo apt update
+          sudo apt install -y ccache
+          python -m pip install --upgrade pip
+          pip install --upgrade platformio esptool
+
+      - name: Build firmware
+        env:
+          # shown on the daylight page (port 8080) so you can tell which build is running
+          PLATFORMIO_BUILD_FLAGS: -DHYPERK_DAYLIGHT_BUILD=\"${{ steps.meta.outputs.tag }}\"
+        run: |
+          CMD="pio run -j 2"
+          for env in ${{ steps.meta.outputs.boards }}; do
+            CMD="$CMD -e $env"
+          done
+          eval "$CMD"
+          ls -la release/
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: Hyperk-Daylight-Firmware
+          path: release/
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download firmware artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: Hyperk-Daylight-Firmware
+          path: release
+
+      - name: Write release notes
+        run: |
+          cat > notes.md <<'MD'
+          ## Hyperk with daylight control
+
+          LEDs only light up when it is dark outside at your location (sunrise/sunset calculated from the configured coordinates).
+
+          ### Update over the air (OTA)
+          1. Open the Hyperk web GUI (`http://hyperk.local/` or the device IP).
+          2. Go to the OTA update section and upload `OTA_Hyperk_<version>_esp8266.bin` from this release.
+          3. After the reboot open `http://hyperk.local:8080/` (or `http://<device-ip>:8080/`), search your place or paste Google Maps coordinates, enable "daylight control" and save.
+
+          `Hyperk_<version>_esp8266.bin` is the same firmware for a first-time flash with esptool / the web flasher.
+          MD
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.build.outputs.tag }}
+          name: Hyperk Daylight ${{ needs.build.outputs.tag }}
+          body_path: notes.md
+          files: release/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
