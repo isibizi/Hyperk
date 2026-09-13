@@ -1,65 +1,19 @@
-# Hyperk
+# Hyperk with daylight control
 
-Hyperk is a minimalist, high-performance uni-platform WiFi/Ethernet LED driver for ESP8266, ESP32 (S2, S3, C2, C3, C5, C6), Raspberry Pi Pico W (RP2040, RP2350). Designed as a lightweight and streamlined component that avoids unnecessary complexity, it delivers low‑latency performance and integrates smoothly with platforms such as HyperHDR, while offering essential home‑automation capabilities through a clean, modern codebase.
+**A fork of [Hyperk](https://github.com/awawa-dev/Hyperk) that keeps the ambient light off during the day.**
 
-> [!NOTE]
-> This is a fork. It adds **daylight control**: the LED strip only follows the TV when it is dark outside, worked out from your coordinates. See [Daylight control](#daylight-control-this-fork) below.
+The LED strip behind your TV is welcome at night and pointless at noon. This fork works out sunrise and sunset from coordinates you enter once, and lets the HyperHDR picture stream reach the LEDs only while it is dark outside. Everything else about Hyperk stays as it is.
 
-## Installation
+- Location by place name, by coordinates pasted from Google Maps, or typed in by hand
+- Choose when it counts as dark, from sunset down to astronomical twilight, and shift either edge by minutes
+- Settings page in the style of the existing interface, on port 8080, plus a firmware upload the stock interface does not offer
+- Falls back to normal behaviour whenever the time or the location is missing, so it cannot leave you in the dark
 
-The firmware can be flashed directly from your browser:
-**[hyperk.hyperhdr.org](https://hyperk.hyperhdr.org)**
+[Jump to the details](#daylight-control) · [Download the firmware](../../releases)
 
-> [!TIP]
-> Once installed, you can also perform OTA updates directly through the local **Web GUI**.
-> That page installs releases of the upstream project only. To put **this fork** on a
-> device, follow [Installing it the first time](#installing-it-the-first-time).
+<img src="resources/img/daylight-ui.png" alt="The daylight settings page" width="480">
 
----
-
-## Supported Hardware
-
-- **Espressif:** ESP8266, ESP32, ESP32-S2, ESP32-S3, ESP32-C2, ESP32-C3, ESP32-C5, ESP32-C6, WT32-ETH01
-   - Initial support for custom boards: GLEDOPTO, DOMRAEM, Athom/IoTorero including LAN8720 chipset  
-   
-- **Raspberry Pi Pico W:** RP2040, RP2350
-
-Includes support for multi-segment (board-dependent), power-relay control, and HyperSerial (USB serial port communication).
-
-## Supported LED Types
-
-- **NeoPixel RGB:** WS2812b and compatible.
-- **NeoPixel RGBW:** SK6812 (includes white channel calibration known from HyperSerial).
-- **DotStar SPI:** APA102 and high-speed clocked LEDs.
-
-## Manual
-
-👉 [https://wiki.hyperhdr.eu/Hyperk](https://wiki.hyperhdr.eu/Hyperk)
-
-## Integration
-
-- **HyperHDR WiFi:** Dedicated Hyperk driver. Also works via its native `DDP`, `udpraw`, and `WLED` drivers.
-- **HyperHDR Serial Port:** HyperHDR Adalight USB serial communication variant (AWA protocol).
-- **Home Assistant:** Automatic discovery with support for power on/off, color, and brightness control.
-
-|      HyperHDR      |   Home Assistant   |
-|--------------------|--------------------|
-| [![1](https://github.com/user-attachments/assets/ab252845-50da-4985-96be-d1da7bfd522d)](https://github.com/user-attachments/assets/ab252845-50da-4985-96be-d1da7bfd522d) | [![2a](https://github.com/user-attachments/assets/b3097b11-249a-4a66-9cff-bcdd70f28e87)](https://github.com/user-attachments/assets/b3097b11-249a-4a66-9cff-bcdd70f28e87) |
-
-
-## Network Services
-
-| Service | Port | Protocol / Description |
-| :--- | :--- | :--- |
-| Web GUI | 80 | Device configuration |
-| UDP DDP | 4048 | DDP listener |
-| UDP RealTime | 21324 | Real-time stream listener |
-| UDP Raw RGB | 5568 | Raw color stream listener |
-| Daylight UI | 8080 | Location based day/night control (this fork) |
-  
-<small>LEDs turn off automatically 6.5s after stream loss.</small>
-
-## Daylight control (this fork)
+## Daylight control
 
 This fork teaches Hyperk one rule: **the LED strip only follows the TV when it is actually dark outside.**
 
@@ -124,6 +78,68 @@ Afterwards every update goes through the **Firmware update** card on `http://hyp
 ### Building a release
 
 Change the first line of `.github/daylight-release-tag` to a new tag such as `daylight-v6` and push. The workflow builds the ESP8266 firmware and publishes it under **Releases**. Pushing a tag named `daylight-v*` or starting **Actions → Release Daylight Firmware → Run workflow** does the same.
+
+---
+
+The rest of this page documents Hyperk itself and is taken from the upstream project.
+
+## Hyperk
+
+Hyperk is a minimalist, high-performance uni-platform WiFi/Ethernet LED driver for ESP8266, ESP32 (S2, S3, C2, C3, C5, C6), Raspberry Pi Pico W (RP2040, RP2350). Designed as a lightweight and streamlined component that avoids unnecessary complexity, it delivers low‑latency performance and integrates smoothly with platforms such as HyperHDR, while offering essential home‑automation capabilities through a clean, modern codebase.
+
+## Installation
+
+The firmware can be flashed directly from your browser:
+**[hyperk.hyperhdr.org](https://hyperk.hyperhdr.org)**
+
+> [!TIP]
+> Once installed, you can also perform OTA updates directly through the local **Web GUI**.
+> That page installs releases of the upstream project only. To put **this fork** on a
+> device, follow [Installing it the first time](#installing-it-the-first-time).
+
+---
+
+## Supported Hardware
+
+- **Espressif:** ESP8266, ESP32, ESP32-S2, ESP32-S3, ESP32-C2, ESP32-C3, ESP32-C5, ESP32-C6, WT32-ETH01
+   - Initial support for custom boards: GLEDOPTO, DOMRAEM, Athom/IoTorero including LAN8720 chipset  
+   
+- **Raspberry Pi Pico W:** RP2040, RP2350
+
+Includes support for multi-segment (board-dependent), power-relay control, and HyperSerial (USB serial port communication).
+
+## Supported LED Types
+
+- **NeoPixel RGB:** WS2812b and compatible.
+- **NeoPixel RGBW:** SK6812 (includes white channel calibration known from HyperSerial).
+- **DotStar SPI:** APA102 and high-speed clocked LEDs.
+
+## Manual
+
+👉 [https://wiki.hyperhdr.eu/Hyperk](https://wiki.hyperhdr.eu/Hyperk)
+
+## Integration
+
+- **HyperHDR WiFi:** Dedicated Hyperk driver. Also works via its native `DDP`, `udpraw`, and `WLED` drivers.
+- **HyperHDR Serial Port:** HyperHDR Adalight USB serial communication variant (AWA protocol).
+- **Home Assistant:** Automatic discovery with support for power on/off, color, and brightness control.
+
+|      HyperHDR      |   Home Assistant   |
+|--------------------|--------------------|
+| [![1](https://github.com/user-attachments/assets/ab252845-50da-4985-96be-d1da7bfd522d)](https://github.com/user-attachments/assets/ab252845-50da-4985-96be-d1da7bfd522d) | [![2a](https://github.com/user-attachments/assets/b3097b11-249a-4a66-9cff-bcdd70f28e87)](https://github.com/user-attachments/assets/b3097b11-249a-4a66-9cff-bcdd70f28e87) |
+
+
+## Network Services
+
+| Service | Port | Protocol / Description |
+| :--- | :--- | :--- |
+| Web GUI | 80 | Device configuration |
+| UDP DDP | 4048 | DDP listener |
+| UDP RealTime | 21324 | Real-time stream listener |
+| UDP Raw RGB | 5568 | Raw color stream listener |
+| Daylight UI | 8080 | Location based day/night control (this fork) |
+  
+<small>LEDs turn off automatically 6.5s after stream loss.</small>
 
 ---
 *Developed for performance. Optimized for HyperHDR. [Privacy & Technical Note](https://awawa-dev.github.io/hyperk/privacy.html)*
