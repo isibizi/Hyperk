@@ -62,7 +62,7 @@ namespace {
 
     enum OverrideMode : uint8_t { OVERRIDE_AUTO = 0, OVERRIDE_ALLOW = 1, OVERRIDE_BLOCK = 2 };
 
-    struct Config {
+    struct DaylightConfig {
         bool    enabled = false;
         double  lat = NAN;
         double  lon = NAN;
@@ -83,8 +83,8 @@ namespace {
         const char*     reason = "disabled";
     };
 
-    Config cfg;
-    Config pendingCfg;
+    DaylightConfig cfg;
+    DaylightConfig pendingCfg;
     volatile bool hasPending = false;
     volatile bool blocked = false;
     uint32_t lastRefresh = 0;
@@ -104,18 +104,18 @@ namespace {
         inline void unlockCfg() {}
     #endif
 
-    Config snapshotConfig() {
+    DaylightConfig snapshotConfig() {
         lockCfg();
-        Config copy = cfg;
+        DaylightConfig copy = cfg;
         unlockCfg();
         return copy;
     }
 
     // ------------------------------------------------------------------
-    // Config <-> JSON
+    // DaylightConfig <-> JSON
     // ------------------------------------------------------------------
 
-    bool hasLocation(const Config& c) {
+    bool hasLocation(const DaylightConfig& c) {
         return !std::isnan(c.lat) && !std::isnan(c.lon);
     }
 
@@ -132,12 +132,12 @@ namespace {
      * missing keys keep their current value. Returns false (and touches nothing
      * else) as soon as a value is out of range.
      */
-    bool applyJson(JsonVariantConst src, Config& dst, const char*& error) {
+    bool applyJson(JsonVariantConst src, DaylightConfig& dst, const char*& error) {
         error = nullptr;
         if (!src.is<JsonObjectConst>()) { error = "expected object"; return false; }
         JsonObjectConst o = src.as<JsonObjectConst>();
 
-        Config tmp = dst;
+        DaylightConfig tmp = dst;
 
         if (!o["enabled"].isNull()) tmp.enabled = o["enabled"].as<bool>();
 
@@ -190,7 +190,7 @@ namespace {
         return true;
     }
 
-    void configToJson(const Config& c, JsonObject o) {
+    void configToJson(const DaylightConfig& c, JsonObject o) {
         o["enabled"] = c.enabled;
         if (hasLocation(c)) {
             o["lat"] = c.lat;
@@ -223,7 +223,7 @@ namespace {
             return false;
         }
         const char* error = nullptr;
-        Config loaded;
+        DaylightConfig loaded;
         if (!applyJson(doc.as<JsonVariantConst>(), loaded, error)) {
             Log::SERIAL_LOG("Daylight: config invalid: ", error);
             return false;
@@ -235,7 +235,7 @@ namespace {
         return true;
     }
 
-    bool saveConfig(const Config& c) {
+    bool saveConfig(const DaylightConfig& c) {
         JsonDocument doc;
         configToJson(c, doc.to<JsonObject>());
 
@@ -270,7 +270,7 @@ namespace {
         return now > MIN_VALID_TIME;
     }
 
-    void evaluate(int64_t at, bool synced, const Config& c, Status& st) {
+    void evaluate(int64_t at, bool synced, const DaylightConfig& c, Status& st) {
         st.now = at;
         st.timeSynced = synced;
         st.hasResult = false;
@@ -312,7 +312,7 @@ namespace {
 
         int64_t now;
         const bool synced = timeSynced(now);
-        Config c = snapshotConfig();
+        DaylightConfig c = snapshotConfig();
 
         Status st;
         evaluate(now, synced, c, st);
@@ -346,7 +346,7 @@ namespace {
     }
 
     void handleStatus(AsyncWebServerRequest* request) {
-        Config c = snapshotConfig();
+        DaylightConfig c = snapshotConfig();
         bool sim = false;
 
         double d;
@@ -394,7 +394,7 @@ namespace {
     }
 
     void handleConfigPost(AsyncWebServerRequest* request, JsonVariant& json) {
-        Config c = snapshotConfig();
+        DaylightConfig c = snapshotConfig();
         const char* error = nullptr;
         if (!applyJson(json.as<JsonVariantConst>(), c, error)) {
             String body = "{\"ok\":false,\"error\":\"";
@@ -446,7 +446,7 @@ void Daylight::begin() {
 void Daylight::loop() {
     if (hasPending) {
         lockCfg();
-        Config c = pendingCfg;
+        DaylightConfig c = pendingCfg;
         hasPending = false;
         const bool ntpChanged = strcmp(c.ntp, cfg.ntp) != 0;
         cfg = c;
@@ -466,7 +466,11 @@ bool Daylight::isStreamBlocked() {
 
 void Daylight::drainUdp(WiFiUDP& udp) {
     for (int i = 0; i < 32 && udp.parsePacket() > 0; ++i) {
-        udp.flush();
+        #if defined(ARDUINO_ARCH_ESP32)
+            udp.clear();   // discard the received datagram (flush() is deprecated on ESP32)
+        #else
+            udp.flush();
+        #endif
     }
 }
 
