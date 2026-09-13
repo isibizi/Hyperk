@@ -77,7 +77,9 @@ Afterwards every update goes through the **Firmware update** card on `http://hyp
 
 ### Building a release
 
-Change the first line of `.github/daylight-release-tag` to a new tag such as `daylight-v6` and push. The workflow builds the ESP8266 firmware and publishes it under **Releases**. Pushing a tag named `daylight-v*` or starting **Actions → Release Daylight Firmware → Run workflow** does the same.
+Change the first line of `.github/daylight-release-tag` to a new tag such as `daylight-v7` and push. The workflow builds **every supported board**, the ESP8266, the whole ESP32 family, the custom boards and the Pico, and publishes them together under **Releases**. Pushing a tag named `daylight-v*` or starting **Actions → Release Daylight Firmware → Run workflow** does the same.
+
+Each board ships as `OTA_Hyperk_<version>_<board>.bin` for updates over the network and `Hyperk_<version>_<board>.bin`, a `.uf2` on the Pico, for a first flash over USB. ESP32 boards additionally get a `_factory.bin` that contains the bootloader and partition table for a completely empty chip.
 
 ---
 

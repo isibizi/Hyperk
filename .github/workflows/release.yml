@@ -1,11 +1,12 @@
 name: Release Daylight Firmware
 
-# Builds the firmware with the daylight gate and publishes it as a GitHub Release.
+# Builds the firmware for every supported board and publishes it as a GitHub Release.
 # Three ways to start it:
-#   1. Change the tag name in .github/daylight-release-tag and push (works from any branch).
+#   1. Change the tag name in .github/daylight-release-tag and push.
 #   2. Push a tag "daylight-v*".
-#   3. Actions -> "Release Daylight Firmware" -> Run workflow (only once the workflow exists on the default branch).
-# The produced OTA_Hyperk_<version>_<board>.bin can be uploaded in the Hyperk web GUI (OTA update).
+#   3. Actions -> "Release Daylight Firmware" -> Run workflow.
+# OTA_Hyperk_<version>_<board>.bin goes into the Firmware update card of the
+# settings page on port 8080; the plain .bin/.uf2 is for a first flash over USB.
 
 on:
   push:
@@ -18,58 +19,78 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (e.g. daylight-v1)"
+        description: "Release tag (e.g. daylight-v7)"
         required: true
-        default: "daylight-v1"
-      boards:
-        description: "PlatformIO environments to build (space separated)"
-        required: true
-        default: "esp8266"
+        default: "daylight-v7"
 
 jobs:
-  build:
+  meta:
     runs-on: ubuntu-latest
     permissions:
       contents: read
     outputs:
-      tag: ${{ steps.meta.outputs.tag }}
-      boards: ${{ steps.meta.outputs.boards }}
-
+      tag: ${{ steps.tag.outputs.tag }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
 
-      - name: Resolve tag and boards
-        id: meta
+      - name: Resolve the release tag
+        id: tag
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
-            echo "boards=${{ github.event.inputs.boards }}" >> "$GITHUB_OUTPUT"
+            TAG="${{ github.event.inputs.tag }}"
           elif [ "${{ github.ref_type }}" = "tag" ]; then
-            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-            echo "boards=esp8266" >> "$GITHUB_OUTPUT"
+            TAG="${GITHUB_REF_NAME}"
           else
             TAG=$(head -n 1 .github/daylight-release-tag | tr -d '[:space:]')
-            if [ -z "$TAG" ]; then echo "No tag name in .github/daylight-release-tag"; exit 1; fi
-            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-            echo "boards=esp8266" >> "$GITHUB_OUTPUT"
           fi
+          if [ -z "$TAG" ]; then echo "No tag name found"; exit 1; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Releasing as $TAG"
+
+  build:
+    name: "${{ matrix.group }}"
+    needs: meta
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: ModernESP_C2
+            boards: "esp32c2"
+          - group: ModernESP_C3_C5_C6
+            boards: "esp32c3 esp32c5 esp32c6"
+          - group: ModernESP_S2
+            boards: "esp32s2"
+          - group: ModernESP_S3
+            boards: "esp32s3"
+          - group: ClassicESP
+            boards: "esp32 esp32-eth01 esp8266"
+          - group: CustomBoards
+            boards: "esp32-GLEDOPTO_GL_C_616WL esp32-GLEDOPTO_GL_C_615WL esp32-DOMRAEM_WLE_ADM esp32-IOTORERO_ETHERNET"
+          - group: Pico
+            boards: "pico pico2"
+
+    steps:
+      - uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
-      - name: Cache PlatformIO
+      - name: "Cache PlatformIO - ${{ matrix.group }}"
         uses: actions/cache@v6
         with:
           path: |
             ~/.platformio/packages
             ~/.platformio/platforms
             .ccache
-          key: pio-release-${{ hashFiles('platformio.ini') }}
+          key: pio2-release-${{ matrix.group }}-${{ hashFiles('platformio.ini') }}
           restore-keys: |
-            pio-release-
+            pio2-release-${{ matrix.group }}-
 
       - name: Install PlatformIO + esptool + ccache
         run: |
@@ -78,37 +99,41 @@ jobs:
           python -m pip install --upgrade pip
           pip install --upgrade platformio esptool
 
-      - name: Build firmware
+      - name: Build ${{ matrix.group }}
         env:
-          # shown on the daylight page (port 8080) so you can tell which build is running
-          PLATFORMIO_BUILD_FLAGS: -DHYPERK_DAYLIGHT_BUILD=\"${{ steps.meta.outputs.tag }}\"
+          # shown in the header of the settings page so the running build is identifiable
+          PLATFORMIO_BUILD_FLAGS: -DHYPERK_DAYLIGHT_BUILD=\"${{ needs.meta.outputs.tag }}\"
         run: |
           CMD="pio run -j 2"
-          for env in ${{ steps.meta.outputs.boards }}; do
+          for env in ${{ matrix.boards }}; do
             CMD="$CMD -e $env"
           done
           eval "$CMD"
           ls -la release/
 
-      - name: Upload firmware artifacts
+      - name: "Upload firmware - ${{ matrix.group }}"
         uses: actions/upload-artifact@v7
         with:
-          name: Hyperk-Daylight-Firmware
+          name: Hyperk-Daylight-${{ matrix.group }}
           path: release/
           if-no-files-found: error
 
   release:
-    needs: build
+    needs: [meta, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Download firmware artifacts
+      - name: Collect the firmware of every board
         uses: actions/download-artifact@v8
         with:
-          name: Hyperk-Daylight-Firmware
+          pattern: Hyperk-Daylight-*
           path: release
+          merge-multiple: true
+
+      - name: List what will be published
+        run: ls -la release/
 
       - name: Write release notes
         run: |
@@ -130,23 +155,34 @@ jobs:
           as dark, switch the rule on and save. The running version is printed in the
           page header.
 
+          ### Which file
+
+          Every supported board is built here. Pick the one that matches yours, for
+          example `esp8266`, `esp32`, `esp32s3`, `esp32-eth01` or `pico`.
+
+          | File | Use |
+          | :--- | :--- |
+          | `OTA_Hyperk_<version>_<board>.bin` | update over the network |
+          | `Hyperk_<version>_<board>.bin` | first flash over USB (`.uf2` on the Pico) |
+          | `Hyperk_<version>_<board>_factory.bin` | complete image for an empty ESP32 |
+
           ### Installing
 
           Already running a build from this fork? Use the **Firmware update** card on
-          `http://hyperk.local:8080/`, pick `OTA_Hyperk_<version>_esp8266.bin` and flash.
+          `http://hyperk.local:8080/`, pick `OTA_Hyperk_<version>_<board>.bin` and flash.
 
           Coming from the stock firmware? Its interface has no file picker, so use one
-          of these instead. Over the network, with the size replaced by the real byte
-          size of the file:
+          of these instead. Over the network, with the board name and the real byte
+          size of the file filled in:
 
           ```
-          curl -F "update=@OTA_Hyperk_<version>_esp8266.bin;filename=firmware.bin" \
-               -H "hyperk-ota-firmware-name: OTA_Hyperk_<version>_esp8266.bin" \
+          curl -F "update=@OTA_Hyperk_<version>_<board>.bin;filename=firmware.bin" \
+               -H "hyperk-ota-firmware-name: OTA_Hyperk_<version>_<board>.bin" \
                -H "hyperk-ota-firmware-size: <bytes>" \
                http://hyperk.local/ota
           ```
 
-          Or over USB, writing `Hyperk_<version>_esp8266.bin` to address `0x0` with
+          Or over USB, writing `Hyperk_<version>_<board>.bin` to address `0x0` with
           esptool or https://espressif.github.io/esptool-js/. Do not erase the flash,
           that would wipe your WiFi credentials and LED configuration.
           MD
@@ -154,9 +190,9 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ needs.build.outputs.tag }}
+          tag_name: ${{ needs.meta.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: Hyperk Daylight ${{ needs.build.outputs.tag }}
+          name: Hyperk Daylight ${{ needs.meta.outputs.tag }}
           body_path: notes.md
           files: release/*
           draft: false
