@@ -30,7 +30,7 @@ Open `http://hyperk.local:8080/`, or `http://<device-ip>:8080/`. It uses the sam
 | Card | What you do there |
 | :--- | :--- |
 | Status | See whether it is dark, whether the stream is allowed, and the next sunrise and sunset in your local time. Three buttons force the gate open or shut for testing. |
-| Location | Search a place by name, paste coordinates copied from Google Maps such as `48.137154, 11.576124`, paste a whole Maps link, or type latitude and longitude. A preview shows the resulting sun times before you save. |
+| Location | Search a place by name, paste coordinates copied from Google Maps such as `48.137154, 11.576124`, paste a whole Maps link, or type latitude and longitude. Name the place, the name appears next to the state in the status card. A preview shows the resulting sun times before you save. |
 | Rules | Switch the whole feature on, pick when it counts as dark, and shift both edges by minutes. |
 | Firmware update | Pick a `.bin` file and flash it. The stock interface on port 80 cannot do this, it only installs releases from the upstream project. |
 

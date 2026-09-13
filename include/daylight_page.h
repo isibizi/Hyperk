@@ -47,7 +47,7 @@ main.container{max-width:48rem}
 <article>
   <header><strong>Status</strong></header>
   <dl class="kv">
-    <dt>Outside</dt><dd><span id="stState" class="badge b-unknown">unknown</span></dd>
+    <dt>Outside</dt><dd><span id="stState" class="badge b-unknown">unknown</span> <small id="stWhere" class="muted"></small></dd>
     <dt>LED stream</dt><dd><span id="stGate" class="badge b-unknown">-</span> <small id="stReason" class="muted"></small></dd>
     <dt>Next sunrise</dt><dd id="stRise">-</dd>
     <dt>Next sunset</dt><dd id="stSet">-</dd>
@@ -83,10 +83,10 @@ main.container{max-width:48rem}
   <small id="pasteMsg" class="muted">Google Maps: right-click a spot on the map and click the coordinates to copy them.</small>
 
   <div class="grid">
-    <label>Latitude<input id="lat" type="number" step="any" min="-90" max="90" oninput="preview()"></label>
-    <label>Longitude<input id="lon" type="number" step="any" min="-180" max="180" oninput="preview()"></label>
+    <label>Latitude<input id="lat" type="number" step="any" min="-90" max="90" oninput="paintName();preview()"></label>
+    <label>Longitude<input id="lon" type="number" step="any" min="-180" max="180" oninput="paintName();preview()"></label>
   </div>
-  <label>Name (optional)<input id="label" type="text" maxlength="60" placeholder="Home"></label>
+  <label id="labelName">Name of the place<input id="label" type="text" maxlength="60" placeholder="Home" oninput="paintName()"></label>
   <button type="button" class="secondary outline" onclick="useBrowserPosition()">Use my browser position</button>
   <small id="preview" class="muted"></small>
 </article>
@@ -145,6 +145,7 @@ function render(s){
   if(s.state==='day'||s.state==='polarDay'){st.classList.add('b-day');st.textContent=(s.state==='polarDay'?'polar day':'daylight');}
   else if(s.state==='night'||s.state==='polarNight'){st.classList.add('b-night');st.textContent=(s.state==='polarNight'?'polar night':'dark');}
   else {st.classList.add('b-unknown');st.textContent='unknown';}
+  $('stWhere').textContent=(s.config&&s.config.label)?('in '+s.config.label):'';
   var g=$('stGate'); g.className='badge '+(s.blocked?'b-off':'b-on'); g.textContent=s.blocked?'blocked (LEDs off)':'allowed';
   var reasons={disabled:'daylight control is disabled',override:'manual override',noLocation:'no location configured',noTime:'waiting for the time from the network, LEDs work as usual',day:'it is light outside',night:'it is dark outside'};
   $('stReason').textContent=reasons[s.reason]||s.reason;
@@ -164,6 +165,7 @@ function fillForm(c){
   for(var i=0;i<sel.options.length;i++){ if(Math.abs(parseFloat(sel.options[i].value)-c.altitude)<0.01){sel.selectedIndex=i;found=true;break;} }
   if(!found){ var o=document.createElement('option'); o.value=alt; o.textContent=alt+'° (custom)'; sel.appendChild(o); sel.value=alt; }
   $('setOffset').value=c.setOffset; $('riseOffset').value=c.riseOffset; $('ntp').value=c.ntp||'';
+  paintName();
 }
 
 function fetchStatus(q){
@@ -201,13 +203,15 @@ function post(body,msgEl,okText){
   for(var k in body){ if(body[k]!==undefined&&body[k]!==null) form.append(k,body[k]); }
   return fetch('/api/daylight',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form.toString()})
     .then(function(r){return r.json();})
-    .then(function(j){ if(j.ok){ if(msgEl) msgEl.textContent=okText; setTimeout(function(){refresh(true);},600); } else { if(msgEl) msgEl.textContent='Error: '+(j.error||'rejected'); } })
+    .then(function(j){ if(j.ok){ if(msgEl) msgEl.textContent=okText; setTimeout(function(){paintName();
+refresh(true);},600); } else { if(msgEl) msgEl.textContent='Error: '+(j.error||'rejected'); } })
     .catch(function(){ if(msgEl) msgEl.textContent='Error: device not reachable'; });
 }
 
 function save(){
   var c=collect();
   if(c.enabled && c.clearLocation){ $('saveMsg').textContent='Please set a location first.'; return; }
+  if(!c.clearLocation && !c.label.trim()){ $('saveMsg').textContent='Please name the place.'; $('label').focus(); return; }
   $('saveMsg').textContent='Saving...';
   post(c,$('saveMsg'),'Saved.');
 }
@@ -231,9 +235,20 @@ function preview(){
 }
 
 function setLocation(lat,lon,name){
-  $('lat').value=Math.round(lat*1e6)/1e6; $('lon').value=Math.round(lon*1e6)/1e6;
+  var la=Math.round(lat*1e6)/1e6, lo=Math.round(lon*1e6)/1e6;
+  $('lat').value=la; $('lon').value=lo;
   if(name) $('label').value=name;
+  else if(!$('label').value) $('label').value=la+', '+lo;
+  paintName();
   preview();
+}
+
+function hasPlace(){ return !isNaN(parseFloat($('lat').value)) && !isNaN(parseFloat($('lon').value)); }
+
+function paintName(){
+  var needed=hasPlace();
+  $('label').required=needed;
+  $('labelName').firstChild.nodeValue=needed?'Name of the place':'Name of the place (optional)';
 }
 
 function doSearch(){
