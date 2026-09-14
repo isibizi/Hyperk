@@ -24,9 +24,13 @@ static const char DAYLIGHT_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
 (function(){var l=document.createElement('link');l.rel='stylesheet';l.href=location.protocol+'//'+location.hostname+'/css/hyperk.css';document.head.appendChild(l);})();
 </script>
 <style>
-.badge{display:inline-block;padding:.15em .6em;border-radius:1em;font-weight:600;font-size:.9em}
-.b-night{background:#1f3a5f;color:#fff}.b-day{background:#f2b705;color:#222}.b-unknown{background:#888;color:#fff}
-.b-on{background:#2e8b57;color:#fff}.b-off{background:#b23a3a;color:#fff}
+.badge{display:inline-block;padding:.1em .7em;border-radius:1em;font-weight:600;font-size:.9em;
+  border:1px solid currentColor;background:transparent}
+.b-night{color:var(--pico-primary,#0172ad)}
+.b-day{color:var(--pico-secondary,#525f7a)}
+.b-unknown{color:var(--pico-muted-color,#646b79)}
+.b-on{color:var(--pico-ins-color,#1d6954)}
+.b-off{color:var(--pico-del-color,#883839)}
 #results{margin:0;padding:0;list-style:none}
 #results li{padding:.4em .6em;cursor:pointer;border-radius:.3em}
 #results li:hover{background:var(--pico-secondary-background,#ddd);color:var(--pico-secondary-inverse,#000)}
@@ -98,10 +102,7 @@ main.container{max-width:48rem}
   <ul id="results"></ul>
   <small id="searchMsg" class="muted"></small>
 
-  <div class="grid">
-    <label>Latitude<input id="lat" type="number" step="any" min="-90" max="90" oninput="paintName();preview()"></label>
-    <label>Longitude<input id="lon" type="number" step="any" min="-180" max="180" oninput="paintName();preview()"></label>
-  </div>
+  <input id="lat" type="hidden"><input id="lon" type="hidden">
   <label id="labelName">Name of the place<input id="label" type="text" maxlength="60" placeholder="Home" oninput="paintName()"></label>
   <button type="button" class="secondary outline" onclick="useBrowserPosition()">Use my browser position</button>
   <small id="preview" class="muted"></small>
@@ -246,7 +247,6 @@ function setLocation(lat,lon,name){
   var la=Math.round(lat*1e6)/1e6, lo=Math.round(lon*1e6)/1e6;
   $('lat').value=la; $('lon').value=lo;
   if(name) $('label').value=name;
-  else if(!$('label').value) $('label').value=la+', '+lo;
   paintName();
   preview();
 }
@@ -284,7 +284,7 @@ $('search').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preve
 function useBrowserPosition(){
   try{
     if(!navigator.geolocation) throw new Error('n/a');
-    navigator.geolocation.getCurrentPosition(function(p){ setLocation(p.coords.latitude,p.coords.longitude,null); $('preview').textContent='Browser position applied - remember to save.'; },
+    navigator.geolocation.getCurrentPosition(function(p){ setLocation(p.coords.latitude,p.coords.longitude,null); if(!$('label').value) $('label').focus(); },
       function(){ $('preview').textContent='Browser refused to share the position (most browsers only allow it on https pages). Paste coordinates instead.'; },{timeout:10000});
   }catch(e){ $('preview').textContent='Position not available in this browser. Paste coordinates instead.'; }
 }
