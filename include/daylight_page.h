@@ -47,7 +47,7 @@ main.container{max-width:48rem}
 <article>
   <header><strong>Status</strong></header>
   <dl class="kv">
-    <dt>Outside</dt><dd><span id="stState" class="badge b-unknown">unknown</span> <small id="stWhere" class="muted"></small></dd>
+    <dt>Outside</dt><dd><span id="stState" class="badge b-unknown">unknown</span></dd>
     <dt>LED stream</dt><dd><span id="stGate" class="badge b-unknown">-</span> <small id="stReason" class="muted"></small></dd>
     <dt>Next sunrise</dt><dd id="stRise">-</dd>
     <dt>Next sunset</dt><dd id="stSet">-</dd>
@@ -61,34 +61,6 @@ main.container{max-width:48rem}
     </div>
     <small class="muted">Override is stored on the device and survives a reboot.</small>
   </footer>
-</article>
-
-<article>
-  <header><strong>Location</strong></header>
-  <label>Search a place
-    <fieldset role="group">
-      <input id="search" type="text" placeholder="e.g. Munich, Germany" autocomplete="off">
-      <button type="button" onclick="doSearch()">Search</button>
-    </fieldset>
-  </label>
-  <ul id="results"></ul>
-  <small id="searchMsg" class="muted"></small>
-
-  <label>Or paste coordinates / a Google Maps link
-    <fieldset role="group">
-      <input id="paste" type="text" placeholder="48.137154, 11.576124  or  https://www.google.com/maps/@48.137154,11.576124,15z">
-      <button type="button" class="secondary" onclick="doPaste()">Use</button>
-    </fieldset>
-  </label>
-  <small id="pasteMsg" class="muted">Google Maps: right-click a spot on the map and click the coordinates to copy them.</small>
-
-  <div class="grid">
-    <label>Latitude<input id="lat" type="number" step="any" min="-90" max="90" oninput="paintName();preview()"></label>
-    <label>Longitude<input id="lon" type="number" step="any" min="-180" max="180" oninput="paintName();preview()"></label>
-  </div>
-  <label id="labelName">Name of the place<input id="label" type="text" maxlength="60" placeholder="Home" oninput="paintName()"></label>
-  <button type="button" class="secondary outline" onclick="useBrowserPosition()">Use my browser position</button>
-  <small id="preview" class="muted"></small>
 </article>
 
 <article>
@@ -109,13 +81,43 @@ main.container{max-width:48rem}
       <input id="riseOffset" type="number" step="1" min="-360" max="360" value="0" oninput="preview()"></label>
   </div>
   <small class="muted">Minutes. Negative values shift the other way.</small>
-  <details>
-    <summary>Advanced</summary>
-    <label>NTP time server<input id="ntp" type="text" maxlength="46" placeholder="pool.ntp.org"></label>
-  </details>
   <footer>
-    <button type="button" id="saveBtn" onclick="save()">Save</button>
-    <small id="saveMsg" class="muted"></small>
+    <button type="button" id="rulesBtn" onclick="saveRules()">Save rules</button>
+    <small id="rulesMsg" class="muted"></small>
+  </footer>
+</article>
+
+<article>
+  <header><strong>Location</strong></header>
+  <label>Search a place
+    <fieldset role="group">
+      <input id="search" type="text" placeholder="e.g. Munich, Germany" autocomplete="off">
+      <button type="button" onclick="doSearch()">Search</button>
+    </fieldset>
+  </label>
+  <ul id="results"></ul>
+  <small id="searchMsg" class="muted"></small>
+
+  <div class="grid">
+    <label>Latitude<input id="lat" type="number" step="any" min="-90" max="90" oninput="paintName();preview()"></label>
+    <label>Longitude<input id="lon" type="number" step="any" min="-180" max="180" oninput="paintName();preview()"></label>
+  </div>
+  <label id="labelName">Name of the place<input id="label" type="text" maxlength="60" placeholder="Home" oninput="paintName()"></label>
+  <button type="button" class="secondary outline" onclick="useBrowserPosition()">Use my browser position</button>
+  <small id="preview" class="muted"></small>
+  <footer>
+    <button type="button" id="locBtn" onclick="saveLocation()">Save location</button>
+    <small id="locMsg" class="muted"></small>
+  </footer>
+</article>
+
+<article>
+  <header><strong>Time server</strong></header>
+  <p class="muted"><small>The device reads the clock from the network. Leave this as it is unless your network blocks the public time servers.</small></p>
+  <label>NTP server<input id="ntp" type="text" maxlength="46" placeholder="pool.ntp.org"></label>
+  <footer>
+    <button type="button" id="ntpBtn" class="secondary" onclick="saveTimeServer()">Save time server</button>
+    <small id="ntpMsg" class="muted"></small>
   </footer>
 </article>
 
@@ -135,7 +137,7 @@ var $=function(id){return document.getElementById(id);};
 var cfg=null;
 $('homeLink').href=location.protocol+'//'+location.hostname+'/';
 
-function fmt(epoch){ if(!epoch) return '-'; return new Date(epoch*1000).toLocaleString([],{weekday:'short',hour:'2-digit',minute:'2-digit'}); }
+function fmt(epoch){ if(!epoch) return '-'; return new Date(epoch*1000).toLocaleString('en-GB',{weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}); }
 
 var lastStatus=null;
 
@@ -145,10 +147,10 @@ function render(s){
   if(s.state==='day'||s.state==='polarDay'){st.classList.add('b-day');st.textContent=(s.state==='polarDay'?'polar day':'daylight');}
   else if(s.state==='night'||s.state==='polarNight'){st.classList.add('b-night');st.textContent=(s.state==='polarNight'?'polar night':'dark');}
   else {st.classList.add('b-unknown');st.textContent='unknown';}
-  $('stWhere').textContent=(s.config&&s.config.label)?('in '+s.config.label):'';
   var g=$('stGate'); g.className='badge '+(s.blocked?'b-off':'b-on'); g.textContent=s.blocked?'blocked (LEDs off)':'allowed';
-  var reasons={disabled:'daylight control is disabled',override:'manual override',noLocation:'no location configured',noTime:'waiting for the time from the network, LEDs work as usual',day:'it is light outside',night:'it is dark outside'};
-  $('stReason').textContent=reasons[s.reason]||s.reason;
+  // only say something when the rule is not simply doing its job
+  var notes={disabled:'switched off',override:'manual override',noLocation:'no location set',noTime:'waiting for the time from the network'};
+  $('stReason').textContent=notes[s.reason]||'';
   $('stRise').textContent=fmt(s.sunrise); $('stSet').textContent=fmt(s.sunset);
   var shifted=s.nextChange&&s.nextChange!==s.sunrise&&s.nextChange!==s.sunset;
   $('stChangeLabel').hidden=!shifted; $('stChange').hidden=!shifted;
@@ -189,32 +191,38 @@ function refresh(initial,attempt){
   });
 }
 
-function collect(){
-  var lat=parseFloat($('lat').value), lon=parseFloat($('lon').value);
-  var c={enabled:$('enabled').checked, altitude:parseFloat($('altitude').value),
-         setOffset:parseInt($('setOffset').value||'0',10), riseOffset:parseInt($('riseOffset').value||'0',10),
-         label:$('label').value, ntp:$('ntp').value};
-  if(isNaN(lat)||isNaN(lon)) c.clearLocation=true; else { c.lat=lat; c.lon=lon; }
-  return c;
-}
-
 function post(body,msgEl,okText){
   var form=new URLSearchParams();
   for(var k in body){ if(body[k]!==undefined&&body[k]!==null) form.append(k,body[k]); }
   return fetch('/api/daylight',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form.toString()})
     .then(function(r){return r.json();})
-    .then(function(j){ if(j.ok){ if(msgEl) msgEl.textContent=okText; setTimeout(function(){paintName();
-refresh(true);},600); } else { if(msgEl) msgEl.textContent='Error: '+(j.error||'rejected'); } })
+    .then(function(j){
+      if(j.ok){ if(msgEl) msgEl.textContent=okText; setTimeout(function(){refresh(true);},600); }
+      else { if(msgEl) msgEl.textContent='Error: '+(j.error||'rejected'); }
+    })
     .catch(function(){ if(msgEl) msgEl.textContent='Error: device not reachable'; });
 }
 
-function save(){
-  var c=collect();
-  if(c.enabled && c.clearLocation){ $('saveMsg').textContent='Please set a location first.'; return; }
-  if(!c.clearLocation && !c.label.trim()){ $('saveMsg').textContent='Please name the place.'; $('label').focus(); return; }
-  $('saveMsg').textContent='Saving...';
-  post(c,$('saveMsg'),'Saved.');
+function saveRules(){
+  $('rulesMsg').textContent='Saving...';
+  post({enabled:$('enabled').checked, altitude:$('altitude').value,
+        setOffset:$('setOffset').value||'0', riseOffset:$('riseOffset').value||'0'},
+       $('rulesMsg'),'Saved.');
 }
+
+function saveLocation(){
+  var lat=parseFloat($('lat').value), lon=parseFloat($('lon').value);
+  if(isNaN(lat)||isNaN(lon)){ $('locMsg').textContent='Please pick a place first.'; return; }
+  if(!$('label').value.trim()){ $('locMsg').textContent='Please name the place.'; $('label').focus(); return; }
+  $('locMsg').textContent='Saving...';
+  post({lat:lat, lon:lon, label:$('label').value}, $('locMsg'),'Saved.');
+}
+
+function saveTimeServer(){
+  $('ntpMsg').textContent='Saving...';
+  post({ntp:$('ntp').value||'pool.ntp.org'}, $('ntpMsg'),'Saved.');
+}
+
 function setOverride(mode){ post({override:mode},$('stReason'),'Override set.'); }
 
 var previewTimer=null;
@@ -272,30 +280,6 @@ function doSearch(){
     .catch(function(){ $('searchMsg').textContent='Search unavailable (needs internet access from this browser). Paste coordinates instead.'; });
 }
 $('search').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); doSearch(); } });
-
-function parseCoords(s){
-  s=s.trim(); var m; var N='(-?\\d{1,3}(?:\\.\\d+)?)';
-  function chk(a,b){ var la=parseFloat(a), lo=parseFloat(b); if(isNaN(la)||isNaN(lo)||la<-90||la>90||lo<-180||lo>180) return null; return [la,lo]; }
-  if((m=s.match(new RegExp('@'+N+','+N)))) return chk(m[1],m[2]);
-  if((m=s.match(new RegExp('[?&](?:q|query|ll|center|destination|daddr|saddr)='+N+'(?:,|%2C)'+N,'i')))) return chk(m[1],m[2]);
-  if((m=s.match(new RegExp('!3d'+N+'!4d'+N)))) return chk(m[1],m[2]);
-  var dms=/(\d{1,3})[°º]\s*(\d{1,2})['′]\s*(\d{1,2}(?:\.\d+)?)?["″]?\s*([NS])[\s,]+(\d{1,3})[°º]\s*(\d{1,2})['′]\s*(\d{1,2}(?:\.\d+)?)?["″]?\s*([EW])/i;
-  if((m=s.match(dms))){
-    var la=(+m[1])+(+m[2])/60+((+m[3])||0)/3600; if(/s/i.test(m[4])) la=-la;
-    var lo=(+m[5])+(+m[6])/60+((+m[7])||0)/3600; if(/w/i.test(m[8])) lo=-lo;
-    return chk(la,lo);
-  }
-  if((m=s.match(new RegExp('^'+N+'\\s*[,;\\s]\\s*'+N+'$')))) return chk(m[1],m[2]);
-  if((m=s.match(/^(-?\d{1,3}),(\d+)\s*[;\s,]\s*(-?\d{1,3}),(\d+)$/))) return chk(m[1]+'.'+m[2],m[3]+'.'+m[4]);
-  return null;
-}
-function doPaste(){
-  var r=parseCoords($('paste').value);
-  if(!r){ $('pasteMsg').textContent='Could not read coordinates. Expected e.g. 48.137154, 11.576124'; return; }
-  setLocation(r[0],r[1],null);
-  $('pasteMsg').textContent='Parsed: '+r[0].toFixed(6)+', '+r[1].toFixed(6)+' - remember to save.';
-}
-$('paste').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); doPaste(); } });
 
 function useBrowserPosition(){
   try{
