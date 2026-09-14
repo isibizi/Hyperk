@@ -149,9 +149,8 @@ jobs:
           ### Settings
 
           After flashing, open `http://hyperk.local:8080/` or `http://<device-ip>:8080/`.
-          Search your place or paste coordinates from Google Maps, choose when it counts
-          as dark, switch the rule on and save. The running version is printed in the
-          page header.
+          Search your place, choose when it counts as dark, switch the rule on and save.
+          The running version is printed in the page header.
 
           ### Which file
 
