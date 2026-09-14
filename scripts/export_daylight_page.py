@@ -43,8 +43,6 @@ else:
         for glue, piece in zip(
             re.findall(r'\)HTML"(.*?)R"HTML\(', text, flags=re.DOTALL), pieces[1:]
         ):
-            for token in re.findall(r'APP_VERSION|HYPERK_DAYLIGHT_BUILD|"([^"]*)"', glue):
-                pass
             resolved = ""
             for token in re.findall(r'APP_VERSION|HYPERK_DAYLIGHT_BUILD|"[^"]*"', glue):
                 if token == "APP_VERSION":

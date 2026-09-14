@@ -230,6 +230,10 @@ function post(body,msgEl,okText){
 }
 
 function saveRules(){
+  if($('enabled').checked && !$('lat').value){
+    $('rulesMsg').textContent='Please pick a place in the location card first.';
+    return;
+  }
   $('rulesMsg').textContent='Saving...';
   post({enabled:$('enabled').checked, altitude:$('altitude').value,
         setOffset:$('setOffset').value||'0', riseOffset:$('riseOffset').value||'0'},
