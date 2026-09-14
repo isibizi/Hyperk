@@ -55,7 +55,7 @@ Each card saves on its own, so a change to the rules does not touch the location
 | Request | Answer |
 | :--- | :--- |
 | `GET /api/daylight` | Status as JSON. Add `?at=<unix epoch>` to ask what the rule would do at another moment, or `?lat=&lon=&altitude=` to try a location without saving it. |
-| `POST /api/daylight` | Takes the same fields as ordinary form parameters, for example `override=block` or `lat=48.14&lon=11.58`. |
+| `POST /api/daylight` | Takes the same fields as ordinary form parameters, for example `override=block` or `lat=48.14&lon=11.58`. `clearLocation=1` forgets the stored place; the settings page has no button for that because a new search simply replaces it. |
 | `GET /api/ping` | Answers `ok`. Useful to check that the device responds at all. |
 
 The API stays on port 8080 because the port 80 server belongs to the closed part of the firmware and cannot be given new routes. It answers the page served from port 80 as well, and accepts only the device's own address as the origin.

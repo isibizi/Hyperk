@@ -460,6 +460,19 @@ namespace {
         }
     }
 
+    /**
+     * @brief Answer the preflight a cross origin upload triggers. The page served
+     * from port 80 cannot reach this server without it.
+     */
+    void handlePreflight(AsyncWebServerRequest* request) {
+        AsyncWebServerResponse* response = request->beginResponse(204, "text/plain", "");
+        addCors(request, response);
+        response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+        response->addHeader("Access-Control-Max-Age", "600");
+        request->send(response);
+    }
+
     void handleStatus(AsyncWebServerRequest* request) {
         // Without query parameters answer from the buffer that loop() keeps up to
         // date. Nothing is computed inside the async callback in that case.
@@ -584,7 +597,9 @@ namespace {
         if (!applyParams(request, c, error)) {
             static char err[96];
             snprintf(err, sizeof(err), "{\"ok\":false,\"error\":\"%s\"}", error ? error : "invalid");
-            request->send(400, "application/json", err);
+            AsyncWebServerResponse* rejected = request->beginResponse(400, "application/json", err);
+            addCors(request, rejected);
+            request->send(rejected);
             return;
         }
         lockCfg();
@@ -654,7 +669,9 @@ namespace {
         updateStarted = false;
         if (!started) {
             // no file in the request: never reboot on that
-            request->send(400, "text/plain", "No firmware file was uploaded.");
+            AsyncWebServerResponse* empty = request->beginResponse(400, "text/plain", "No firmware file was uploaded.");
+            addCors(request, empty);
+            request->send(empty);
             return;
         }
 
@@ -685,6 +702,9 @@ namespace {
         server->on("/api/daylight", HTTP_POST, handleConfigPost);
 
         server->on("/update", HTTP_POST, handleUpdateResult, handleUpdateUpload);
+
+        server->on("/api/daylight", HTTP_OPTIONS, handlePreflight);
+        server->on("/update", HTTP_OPTIONS, handlePreflight);
 
         server->onNotFound([](AsyncWebServerRequest* request) {
             request->send(404, "text/plain", "Not found");
