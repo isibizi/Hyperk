@@ -4,7 +4,7 @@
 
 The LED strip behind your TV is welcome at night and pointless at noon. This fork works out sunrise and sunset from coordinates you enter once, and lets the HyperHDR picture stream reach the LEDs only while it is dark outside. Everything else about Hyperk stays as it is.
 
-- Location by place name or by coordinates typed in by hand
+- Location by place name, or from the position the browser knows
 - Choose when it counts as dark, from sunset down to astronomical twilight, and shift either edge by minutes
 - Settings page in the style of the existing interface, on port 8080, plus a firmware upload the stock interface does not offer
 - Falls back to normal behaviour whenever the time or the location is missing, so it cannot leave you in the dark
@@ -30,7 +30,7 @@ Open `http://hyperk.local:8080/`, or `http://<device-ip>:8080/`. It uses the sam
 | Card | What you do there |
 | :--- | :--- |
 | Status | See whether it is dark, whether the stream is allowed, and the next sunrise and sunset in your local time. Three buttons force the gate open or shut for testing. |
-| Location | Search a place by name, or type latitude and longitude. Give the place a name, then save. A preview shows the resulting sun times before you save. |
+| Location | Search a place by name, or take the position from the browser. Give the place a name, then save. A preview shows the resulting sun times before you save. |
 | Rules | Switch the whole feature on, pick when it counts as dark, and shift both edges by minutes. |
 | Time server | The NTP server the clock comes from. Only worth touching if your network blocks the public ones. |
 | Firmware update | Pick a `.bin` file and flash it. The stock interface on port 80 cannot do this, it only installs releases from the upstream project. |
