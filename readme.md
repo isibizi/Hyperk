@@ -6,7 +6,7 @@ The LED strip behind your TV is welcome at night and pointless at noon. This for
 
 - Location by place name, looked up once in your browser
 - Choose when it counts as dark, from sunset down to astronomical twilight, and shift either edge by minutes
-- Settings page in the style of the existing interface, on port 8080, plus a firmware upload the stock interface does not offer
+- Settings page in the style of the existing interface, reachable at `/daylight.html` without a port, plus a firmware upload the stock interface does not offer
 - Falls back to normal behaviour whenever the time or the location is missing, so it cannot leave you in the dark
 
 [Jump to the details](#daylight-control) · [Download the firmware](../../releases)
@@ -25,7 +25,9 @@ It is a filter, not a light switch. The LEDs light up because HyperHDR sends a p
 
 ### Settings page
 
-Open `http://hyperk.local:8080/`, or `http://<device-ip>:8080/`. It uses the same styling as the main Hyperk interface and shows the running firmware version in its header.
+Open **`http://hyperk.local/daylight.html`**, no port needed. The page is also served directly by this firmware at `http://hyperk.local:8080/`, which is the address to fall back on if the first one ever stops working. Both are the same page, and both use the styling, the dark theme and the navigation bar of the main Hyperk interface.
+
+The page carries links back to Home and Settings. The other direction is not possible: the pages of the main interface are compiled into the closed part of the firmware and cannot be given an extra link, so reach the daylight page by its own address or a bookmark.
 
 | Card | What you do there |
 | :--- | :--- |
@@ -55,6 +57,8 @@ Each card saves on its own, so a change to the rules does not touch the location
 | `GET /api/daylight` | Status as JSON. Add `?at=<unix epoch>` to ask what the rule would do at another moment, or `?lat=&lon=&altitude=` to try a location without saving it. |
 | `POST /api/daylight` | Takes the same fields as ordinary form parameters, for example `override=block` or `lat=48.14&lon=11.58`. |
 | `GET /api/ping` | Answers `ok`. Useful to check that the device responds at all. |
+
+The API stays on port 8080 because the port 80 server belongs to the closed part of the firmware and cannot be given new routes. It answers the page served from port 80 as well, and accepts only the device's own address as the origin.
 | `POST /update` | Takes a firmware file as a normal file upload. |
 
 ### Installing it the first time
