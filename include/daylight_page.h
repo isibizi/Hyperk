@@ -124,8 +124,7 @@ main.container{max-width:48rem}
   <small id="searchMsg" class="muted"></small>
 
   <input id="lat" type="hidden"><input id="lon" type="hidden">
-  <label id="labelName">Name of the place<input id="label" type="text" maxlength="60" placeholder="Home" oninput="paintName()"></label>
-  <button type="button" class="secondary outline" onclick="useBrowserPosition()">Use my browser position</button>
+  <label>Selected place<input id="label" type="text" readonly placeholder="none yet, search above"></label>
   <small id="preview" class="muted"></small>
   <footer>
     <button type="button" id="locBtn" onclick="saveLocation()">Save location</button>
@@ -191,7 +190,6 @@ function fillForm(c){
   for(var i=0;i<sel.options.length;i++){ if(Math.abs(parseFloat(sel.options[i].value)-c.altitude)<0.01){sel.selectedIndex=i;found=true;break;} }
   if(!found){ var o=document.createElement('option'); o.value=alt; o.textContent=alt+'° (custom)'; sel.appendChild(o); sel.value=alt; }
   $('setOffset').value=c.setOffset; $('riseOffset').value=c.riseOffset; $('ntp').value=c.ntp||'';
-  paintName();
 }
 
 function fetchStatus(q){
@@ -236,8 +234,10 @@ function saveRules(){
 
 function saveLocation(){
   var lat=parseFloat($('lat').value), lon=parseFloat($('lon').value);
-  if(isNaN(lat)||isNaN(lon)){ $('locMsg').textContent='Please pick a place first.'; return; }
-  if(!$('label').value.trim()){ $('locMsg').textContent='Please name the place.'; $('label').focus(); return; }
+  if(isNaN(lat)||isNaN(lon)||!$('label').value.trim()){
+    $('locMsg').textContent='Please search a place and pick it from the list.';
+    return;
+  }
   $('locMsg').textContent='Saving...';
   post({lat:lat, lon:lon, label:$('label').value}, $('locMsg'),'Saved.');
 }
@@ -267,19 +267,10 @@ function preview(){
 }
 
 function setLocation(lat,lon,name){
-  var la=Math.round(lat*1e6)/1e6, lo=Math.round(lon*1e6)/1e6;
-  $('lat').value=la; $('lon').value=lo;
-  if(name) $('label').value=name;
-  paintName();
+  $('lat').value=Math.round(lat*1e6)/1e6;
+  $('lon').value=Math.round(lon*1e6)/1e6;
+  $('label').value=name;
   preview();
-}
-
-function hasPlace(){ return !isNaN(parseFloat($('lat').value)) && !isNaN(parseFloat($('lon').value)); }
-
-function paintName(){
-  var needed=hasPlace();
-  $('label').required=needed;
-  $('labelName').firstChild.nodeValue=needed?'Name of the place':'Name of the place (optional)';
 }
 
 function doSearch(){
@@ -294,23 +285,17 @@ function doSearch(){
       $('searchMsg').textContent='Click a result to use it:';
       res.forEach(function(r){
         var li=document.createElement('li');
-        var parts=[r.name]; if(r.admin1) parts.push(r.admin1); if(r.country) parts.push(r.country);
+        var parts=[r.name];
+        if(r.admin1&&r.admin1!==r.name) parts.push(r.admin1);
+        if(r.country&&r.country!==r.name) parts.push(r.country);
         li.textContent=parts.join(', ')+'  ('+r.latitude.toFixed(4)+', '+r.longitude.toFixed(4)+')';
         li.onclick=function(){ setLocation(r.latitude,r.longitude,parts.join(', ')); list.innerHTML=''; $('searchMsg').textContent='Location set - remember to save.'; };
         list.appendChild(li);
       });
     })
-    .catch(function(){ $('searchMsg').textContent='Search unavailable (needs internet access from this browser). Paste coordinates instead.'; });
+    .catch(function(){ $('searchMsg').textContent='Search unavailable. This browser needs internet access to look up a place.'; });
 }
 $('search').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); doSearch(); } });
-
-function useBrowserPosition(){
-  try{
-    if(!navigator.geolocation) throw new Error('n/a');
-    navigator.geolocation.getCurrentPosition(function(p){ setLocation(p.coords.latitude,p.coords.longitude,null); if(!$('label').value) $('label').focus(); },
-      function(){ $('preview').textContent='Browser refused to share the position (most browsers only allow it on https pages). Paste coordinates instead.'; },{timeout:10000});
-  }catch(e){ $('preview').textContent='Position not available in this browser. Paste coordinates instead.'; }
-}
 
 function uploadFirmware(){
   var f=$('fwFile').files[0];
