@@ -155,6 +155,10 @@ main.container{max-width:48rem}
 
 <script>
 var $=function(id){return document.getElementById(id);};
+
+// Served from port 8080 by this firmware, or from port 80 by the Hyperk web
+// server. In the second case the API still lives on 8080.
+var API=(location.port==='8080')?'':(location.protocol+'//'+location.hostname+':8080');
 var cfg=null;
 var mainGui=location.protocol+'//'+location.hostname+'/';
 $('navHome').href=mainGui+'index.html';
@@ -193,7 +197,7 @@ function fillForm(c){
 }
 
 function fetchStatus(q){
-  return fetch(q||'/api/daylight',{cache:'no-store'}).then(function(r){
+  return fetch(q||(API+'/api/daylight'),{cache:'no-store'}).then(function(r){
     if(!r.ok) throw new Error('HTTP '+r.status);
     return r.text();
   }).then(function(t){
@@ -216,7 +220,7 @@ function refresh(initial,attempt){
 function post(body,msgEl,okText){
   var form=new URLSearchParams();
   for(var k in body){ if(body[k]!==undefined&&body[k]!==null) form.append(k,body[k]); }
-  return fetch('/api/daylight',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form.toString()})
+  return fetch(API+'/api/daylight',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form.toString()})
     .then(function(r){return r.json();})
     .then(function(j){
       if(j.ok){ if(msgEl) msgEl.textContent=okText; setTimeout(function(){refresh(true);},600); }
@@ -255,7 +259,7 @@ function preview(){
   previewTimer=setTimeout(function(){
     var lat=parseFloat($('lat').value), lon=parseFloat($('lon').value);
     if(isNaN(lat)||isNaN(lon)){ $('preview').textContent=''; return; }
-    var q='/api/daylight?lat='+lat+'&lon='+lon+'&altitude='+$('altitude').value+'&setOffset='+($('setOffset').value||0)+'&riseOffset='+($('riseOffset').value||0);
+    var q=API+'/api/daylight?lat='+lat+'&lon='+lon+'&altitude='+$('altitude').value+'&setOffset='+($('setOffset').value||0)+'&riseOffset='+($('riseOffset').value||0);
     fetchStatus(q).then(function(s){
       if(!s.timeSynced){ $('preview').textContent='Preview available once the device time is synchronized.'; return; }
       var txt='For this location: next sunrise '+fmt(s.sunrise)+', next sunset '+fmt(s.sunset)+'. Right now it is '+(s.blocked?'light (LEDs would be off)':'dark (LEDs allowed)')+'.';
@@ -306,7 +310,7 @@ function uploadFirmware(){
   $('fwMsg').textContent='Uploading '+f.name+' ('+Math.round(f.size/1024)+' kB). Do not switch off the device.';
   var fd=new FormData(); fd.append('update',f,f.name);
   var x=new XMLHttpRequest();
-  x.open('POST','/update',true);
+  x.open('POST',API+'/update',true);
   x.upload.onprogress=function(e){ if(e.lengthComputable){ bar.value=Math.round(e.loaded/e.total*100); } };
   x.onload=function(){
     $('fwBtn').disabled=false;

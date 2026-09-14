@@ -17,3 +17,4 @@ ccache.exe
 .ccache/
 CMakeLists.txt
 dependencies.lock
+data/daylight.html

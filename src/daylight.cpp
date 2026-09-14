@@ -441,12 +441,32 @@ namespace {
             (unsigned long)ESP.getFreeHeap());
     }
 
+    /**
+     * @brief Allow the page to be served by the Hyperk web server on port 80 while
+     * the API stays here. Only the device's own origin is accepted.
+     */
+    void addCors(AsyncWebServerRequest* request, AsyncWebServerResponse* response) {
+        if (!request->hasHeader("Origin")) return;
+
+        String origin = request->header("Origin");
+        String host = request->host();
+        const int colon = host.indexOf(':');
+        if (colon >= 0) host = host.substring(0, colon);
+
+        String own = "http://";
+        own += host;
+        if (origin == own || origin == own + ":8080") {
+            response->addHeader("Access-Control-Allow-Origin", origin);
+        }
+    }
+
     void handleStatus(AsyncWebServerRequest* request) {
         // Without query parameters answer from the buffer that loop() keeps up to
         // date. Nothing is computed inside the async callback in that case.
         if (request->params() == 0) {
             AsyncWebServerResponse* cached = request->beginResponse(200, "application/json", statusBuf[statusIdx]);
             cached->addHeader("Cache-Control", "no-store");
+            addCors(request, cached);
             request->send(cached);
             return;
         }
@@ -482,6 +502,7 @@ namespace {
 
         AsyncWebServerResponse* response = request->beginResponse(200, "application/json", body);
         response->addHeader("Cache-Control", "no-store");
+        addCors(request, response);
         request->send(response);
     }
 
@@ -570,7 +591,10 @@ namespace {
         pendingCfg = c;
         hasPending = true;
         unlockCfg();
-        request->send(200, "application/json", "{\"ok\":true}");
+
+        AsyncWebServerResponse* ok = request->beginResponse(200, "application/json", "{\"ok\":true}");
+        addCors(request, ok);
+        request->send(ok);
     }
 
     /**
@@ -638,6 +662,7 @@ namespace {
         AsyncWebServerResponse* response = request->beginResponse(ok ? 200 : 400, "text/plain",
             ok ? "Firmware written. The device is rebooting." : "Firmware update failed. The device keeps the current firmware.");
         response->addHeader("Connection", "close");
+        addCors(request, response);
         request->send(response);
         if (ok) rebootRequested = true;   // actual reboot is scheduled from loop()
     }
