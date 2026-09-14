@@ -15,22 +15,32 @@
 #endif
 
 static const char DAYLIGHT_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Hyperk - Daylight</title>
+<title>Daylight - Hyperk</title>
+<link id="app-favicon" rel="icon" href="data:,">
 <script>
-(function(){var l=document.createElement('link');l.rel='stylesheet';l.href=location.protocol+'//'+location.hostname+'/css/hyperk.css';document.head.appendChild(l);})();
+(function(){
+  var l=document.createElement('link');
+  l.rel='stylesheet';
+  l.href=location.protocol+'//'+location.hostname+'/css/hyperk.css';
+  l.onload=function(){
+    var icon=getComputedStyle(document.documentElement).getPropertyValue('--app-icon').match(/data:[^")]+/);
+    if(icon) document.getElementById('app-favicon').href=icon[0];
+  };
+  document.head.appendChild(l);
+})();
 </script>
 <style>
 .badge{display:inline-block;padding:.1em .7em;border-radius:1em;font-weight:600;font-size:.9em;
   border:1px solid currentColor;background:transparent}
 .b-night{color:var(--pico-primary,#0172ad)}
-.b-day{color:var(--pico-secondary,#525f7a)}
-.b-unknown{color:var(--pico-muted-color,#646b79)}
-.b-on{color:var(--pico-ins-color,#1d6954)}
-.b-off{color:var(--pico-del-color,#883839)}
+.b-day{color:#eab308}
+.b-unknown{color:var(--pico-muted-color,#7b8495)}
+.b-on{color:#43a047}
+.b-off{color:var(--pico-muted-color,#7b8495)}
 #results{margin:0;padding:0;list-style:none}
 #results li{padding:.4em .6em;cursor:pointer;border-radius:.3em}
 #results li:hover{background:var(--pico-secondary-background,#ddd);color:var(--pico-secondary-inverse,#000)}
@@ -39,14 +49,25 @@ static const char DAYLIGHT_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
 dl.kv{display:grid;grid-template-columns:max-content 1fr;gap:.2em 1em;margin:0}
 dl.kv dt{font-weight:600;margin:0}dl.kv dd{margin:0}
 main.container{max-width:48rem}
+@media (max-width:640px){#verTag{display:none}}
 </style>
 </head>
 <body>
-<main class="container">
-<nav>
-  <ul><li><strong>Hyperk</strong> &middot; Daylight <small class="muted">)HTML" APP_VERSION " / " HYPERK_DAYLIGHT_BUILD R"HTML(</small></li></ul>
-  <ul><li><a id="homeLink" href="/">Main settings</a></li></ul>
+<nav class="container-fluid">
+  <ul>
+    <li style="display:flex;align-items:center">
+      <span class="logo-h"></span><strong class="yperk">y<span class="perk">perk</span></strong>
+      <small id="verTag" class="muted" style="margin-left:.6rem;white-space:nowrap">Daylight )HTML" APP_VERSION " / " HYPERK_DAYLIGHT_BUILD R"HTML(</small>
+    </li>
+  </ul>
+  <ul>
+    <li><a id="navHome" href="/">Home</a></li>
+    <li><a id="navSettings" href="/">Settings</a></li>
+    <li><a href="#" aria-current="page">Daylight</a></li>
+  </ul>
 </nav>
+
+<main class="container">
 
 <article>
   <header><strong>Status</strong></header>
@@ -136,7 +157,9 @@ main.container{max-width:48rem}
 <script>
 var $=function(id){return document.getElementById(id);};
 var cfg=null;
-$('homeLink').href=location.protocol+'//'+location.hostname+'/';
+var mainGui=location.protocol+'//'+location.hostname+'/';
+$('navHome').href=mainGui+'index.html';
+$('navSettings').href=mainGui+'settings.html';
 
 function fmt(epoch){ if(!epoch) return '-'; return new Date(epoch*1000).toLocaleString('en-GB',{weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}); }
 
